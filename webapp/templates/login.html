@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Sign In · {{ app_name }}{% endblock %}
+{% block auth_content %}
+<div class="auth-card">
+    <div class="auth-eyebrow">访问终端</div>
+    <h1 class="auth-title">欢迎回来，<br>操作员。</h1>
+    <p class="auth-sub">
+        输入密码重新获取隐形学习代理的控制权。
+        <br>所有会话在本地；数据不外传。
+    </p>
+
+    <form class="auth-form" x-data x-on:submit.prevent="
+        const fd = new FormData($event.target);
+        fetch('/api/login', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({password: fd.get('password')})
+        }).then(r => r.json().then(j => ({ok: r.ok, j})))
+          .then(({ok, j}) => {
+              if (ok) location.href = '/dashboard';
+              else showToast(j.detail || '登录失败', 'danger');
+          });
+    ">
+        <div class="field">
+            <label class="field-label">密码</label>
+            <input type="password" class="input" name="password" required autofocus
+                   placeholder="• • • • • • • •">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">
+            <span>认证</span>
+            <span class="glyph">→</span>
+        </button>
+    </form>
+
+    <div class="auth-foot">v1.0 · self-hosted</div>
+</div>
+{% endblock %}

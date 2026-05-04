@@ -1,0 +1,35 @@
+[project]
+name = "chaoxing-web"
+version = "1.0.0"
+description = "超星学习通自动化任务 Web 控制台"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.13,<4.0"
+dependencies = [
+    "requests>=2.32.5",
+    "pyaes>=1.6.1",
+    "beautifulsoup4>=4.14.2",
+    "lxml",
+    "loguru>=0.7.3",
+    "fonttools>=4.60.1",
+    "openai>=1.109.1",
+    "tqdm>=4.67.1",
+    "httpx>=0.28.1",
+    "urllib3>=2.5.0",
+    "chardet>=3.0.2,<6.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "sqlalchemy>=2.0",
+    "aiosqlite>=0.20",
+    "apscheduler>=3.10",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.12",
+    "cryptography>=43.0",
+    "itsdangerous>=2.2",
+]
+
+[tool.setuptools]
+py-modules = []
+
+[tool.uv]
+package = false

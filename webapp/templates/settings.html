@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+{% block title %}配置 · {{ app_name }}{% endblock %}
+{% block content %}
+<div x-data="settingsPage()" x-init="init()">
+
+    <header class="page-head">
+        <div>
+            <div class="page-eyebrow">// 配置 · 04</div>
+            <h1 class="page-title">配置 <span class="serif" style="color: var(--bone-mute);">— 全局代理姿态。</span></h1>
+            <p class="page-sub">影响所有操作的开关：题库、推送通知、主密码。</p>
+        </div>
+    </header>
+
+    <div class="tabs">
+        <button class="tab" :class="active === 'tiku' ? 'active' : ''" @click="active = 'tiku'">
+            <span class="tab-num">01</span>
+            <span>题库</span>
+        </button>
+        <button class="tab" :class="active === 'notify' ? 'active' : ''" @click="active = 'notify'">
+            <span class="tab-num">02</span>
+            <span>通知</span>
+        </button>
+        <button class="tab" :class="active === 'pwd' ? 'active' : ''" @click="active = 'pwd'">
+            <span class="tab-num">03</span>
+            <span>密码</span>
+        </button>
+    </div>
+
+    <!-- TIKU -->
+    <section class="panel bracketed" x-show="active === 'tiku'" x-transition.opacity>
+        <div class="panel-head"><span><span class="num">01</span> 题库</span></div>
+        <div class="panel-body">
+            <form @submit.prevent="saveTiku" class="form-grid">
+
+                <div class="field col-4">
+                    <label class="field-label">提供商</label>
+                    <select class="select" x-model="tiku.provider">
+                        <option value="">— 已禁用</option>
+                        <option value="TikuYanxi">TikuYanxi · 言溪</option>
+                        <option value="TikuLike">TikuLike · LIKE 知识库</option>
+                        <option value="TikuAdapter">TikuAdapter · 开源</option>
+                        <option value="AI">AI · OpenAI 兼容</option>
+                        <option value="SiliconFlow">SiliconFlow · 硅基流动</option>
+                    </select>
+                </div>
+
+                <div class="field col-4">
+                    <label class="field-label">提交策略</label>
+                    <select class="select" x-model="tiku.submit">
+                        <option :value="false">仅保存</option>
+                        <option :value="true">阈值自动提交</option>
+                    </select>
+                </div>
+
+                <div class="field col-4">
+                    <label class="field-label">最小覆盖率 <span class="muted">0–1</span></label>
+                    <input type="number" class="input tabular" min="0" max="1" step="0.05" x-model.number="tiku.cover_rate">
+                </div>
+
+                <div class="field col-12">
+                    <label class="field-label">令牌 <span class="muted">逗号分隔 · 供言溪 / LIKE 使用</span></label>
+                    <input type="text" class="input" x-model="tiku.tokens">
+                </div>
+
+                <template x-if="tiku.provider === 'TikuAdapter'">
+                    <div class="field col-12">
+                        <label class="field-label">TikuAdapter 网址</label>
+                        <input type="text" class="input" x-model="tiku.url">
+                    </div>
+                </template>
+
+                <template x-if="tiku.provider === 'AI'">
+                    <div class="col-12">
+                        <div class="form-grid">
+                            <div class="field col-6">
+                                <label class="field-label">端点</label>
+                                <input type="text" class="input" x-model="tiku.endpoint" placeholder="https://example.com/v1">
+                            </div>
+                            <div class="field col-6">
+                                <label class="field-label">API 密钥</label>
+                                <input type="password" class="input" x-model="tiku.key">
+                            </div>
+                            <div class="field col-6">
+                                <label class="field-label">模型</label>
+                                <input type="text" class="input" x-model="tiku.model">
+                            </div>
+                            <div class="field col-3">
+                                <label class="field-label">间隔 <span class="muted">秒</span></label>
+                                <input type="number" class="input tabular" min="0" x-model.number="tiku.min_interval_seconds">
+                            </div>
+                            <div class="field col-3">
+                                <label class="field-label">HTTP 代理</label>
+                                <input type="text" class="input" x-model="tiku.http_proxy">
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <template x-if="tiku.provider === 'SiliconFlow'">
+                    <div class="col-12">
+                        <div class="form-grid">
+                            <div class="field col-6">
+                                <label class="field-label">SiliconFlow 密钥</label>
+                                <input type="password" class="input" x-model="tiku.siliconflow_key">
+                            </div>
+                            <div class="field col-6">
+                                <label class="field-label">模型</label>
+                                <input type="text" class="input" x-model="tiku.siliconflow_model">
+                            </div>
+                            <div class="field col-12">
+                                <label class="field-label">端点</label>
+                                <input type="text" class="input" x-model="tiku.siliconflow_endpoint">
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <div class="field col-6">
+                    <label class="field-label">查询延迟 <span class="muted">秒</span></label>
+                    <input type="number" class="input tabular" min="0" step="0.1" x-model.number="tiku.delay">
+                </div>
+
+                <div class="form-section-title">真值表映射</div>
+
+                <div class="field col-6">
+                    <label class="field-label">true_list</label>
+                    <input type="text" class="input" x-model="tiku.true_list">
+                </div>
+                <div class="field col-6">
+                    <label class="field-label">false_list</label>
+                    <input type="text" class="input" x-model="tiku.false_list">
+                </div>
+
+                <div class="col-12" style="text-align: right; margin-top: 14px;">
+                    <button type="submit" class="btn btn-primary">
+                        <span class="glyph">✓</span>
+                        <span>提交配置</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <!-- NOTIFY -->
+    <section class="panel bracketed" x-show="active === 'notify'" x-transition.opacity>
+        <div class="panel-head"><span><span class="num">02</span> 通知</span></div>
+        <div class="panel-body">
+            <form @submit.prevent="saveNotify" class="form-grid">
+                <div class="field col-12">
+                    <label class="field-label">提供商</label>
+                    <select class="select" x-model="notify.provider">
+                        <option value="">— 已禁用</option>
+                        <option value="ServerChan">ServerChan · 多平台</option>
+                        <option value="Qmsg">Qmsg · QQ 推送</option>
+                        <option value="Bark">Bark · iOS</option>
+                        <option value="Telegram">Telegram 机器人</option>
+                    </select>
+                </div>
+                <div class="field col-12">
+                    <label class="field-label">Webhook 网址</label>
+                    <input type="text" class="input" x-model="notify.url"
+                           placeholder="根据提供商规范填充完整推送网址">
+                </div>
+                <div class="field col-12" x-show="notify.provider === 'Telegram'">
+                    <label class="field-label">Telegram chat_id</label>
+                    <input type="text" class="input" x-model="notify.tg_chat_id">
+                </div>
+                <div class="col-12" style="text-align: right; margin-top: 8px;">
+                    <button type="submit" class="btn btn-primary">
+                        <span class="glyph">✓</span>
+                        <span>提交配置</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <!-- PWD -->
+    <section class="panel bracketed" x-show="active === 'pwd'" x-transition.opacity>
+        <div class="panel-head"><span><span class="num">03</span> 轮换密码</span></div>
+        <div class="panel-body">
+            <form @submit.prevent="changePassword" style="max-width: 460px; display: flex; flex-direction: column; gap: 16px;">
+                <div class="field">
+                    <label class="field-label">当前密码</label>
+                    <input type="password" class="input" x-model="pwd.old">
+                </div>
+                <div class="field">
+                    <label class="field-label">新密码</label>
+                    <input type="password" class="input" x-model="pwd.new" required minlength="4">
+                </div>
+                <div class="field">
+                    <label class="field-label">确认新密码</label>
+                    <input type="password" class="input" x-model="pwd.confirm" required>
+                </div>
+                <div>
+                    <button type="submit" class="btn btn-primary">
+                        <span class="glyph">⟳</span>
+                        <span>轮换</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </section>
+</div>
+
+<script>
+function settingsPage() {
+    return {
+        active: 'tiku',
+        tiku: {},
+        notify: {},
+        pwd: {old: '', new: '', confirm: ''},
+        async init() {
+            this.tiku = await fetch('/api/settings/tiku').then(r => r.json());
+            this.notify = await fetch('/api/settings/notification').then(r => r.json());
+            // cast string booleans
+            ['submit', 'likeapi_search', 'likeapi_vision', 'likeapi_retry', 'check_llm_connection'].forEach(k => {
+                if (typeof this.tiku[k] === 'string') this.tiku[k] = this.tiku[k] === 'true';
+            });
+        },
+        async saveTiku() {
+            const res = await fetch('/api/settings/tiku', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(this.tiku),
+            });
+            const j = await res.json();
+            showToast(j.msg || (res.ok ? 'saved' : 'failed'), res.ok ? 'success' : 'danger');
+        },
+        async saveNotify() {
+            const res = await fetch('/api/settings/notification', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(this.notify),
+            });
+            const j = await res.json();
+            showToast(j.msg || (res.ok ? 'saved' : 'failed'), res.ok ? 'success' : 'danger');
+        },
+        async changePassword() {
+            if (this.pwd.new !== this.pwd.confirm) {
+                showToast('两次密码不一致', 'danger');
+                return;
+            }
+            const res = await fetch('/api/admin/password', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({new_password: this.pwd.new, old_password: this.pwd.old}),
+            });
+            const j = await res.json();
+            showToast(j.msg || j.detail || 'done', res.ok ? 'success' : 'danger');
+            if (res.ok) this.pwd = {old: '', new: '', confirm: ''};
+        },
+    };
+}
+</script>
+{% endblock %}

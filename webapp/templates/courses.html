@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block title %}Courses · {{ app_name }}{% endblock %}
+{% block content %}
+<div x-data="coursesPage({{ account_id }})" x-init="init()">
+
+    <header class="page-head">
+        <div>
+            <div class="page-eyebrow">
+                <a href="/accounts" style="color: inherit;">↰ roster</a>
+                <span style="margin: 0 12px; color: var(--bone-faint);">/</span>
+                <span x-text="account.phone || '—'"></span>
+            </div>
+            <h1 class="page-title">课程目录
+                <span class="serif" style="color: var(--bone-mute);"
+                      x-text="account.nickname ? `— 为 ${account.nickname} 准备。` : '— 本身份可选。'"></span>
+            </h1>
+            <p class="page-sub">选择代理需要处理的课程。选择项在启动前保留。</p>
+        </div>
+        <div class="page-actions">
+            <button class="btn btn-ghost" @click="refresh(true)" :disabled="loading">
+                <span class="glyph" :class="loading ? 'spinner' : ''" x-text="loading ? '' : '↻'"></span>
+                <span>刷新</span>
+            </button>
+            <button class="btn btn-primary" @click="openLaunch" :disabled="!hasSelection() || loading">
+                <span class="glyph">▶</span>
+                <span>启动 · <span x-text="selected.length"></span></span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Loading state -->
+    <div x-show="loading" class="panel" style="padding: 60px; text-align: center;">
+        <div class="spinner" style="width: 24px; height: 24px; margin: 0 auto 16px;"></div>
+        <div class="muted serif" style="font-size: 1.1rem;">建立通道中…</div>
+        <div class="muted" style="font-size: 0.75rem; margin-top: 6px;">首次接入可能触发超星登录流程</div>
+    </div>
+
+    <!-- Error -->
+    <div x-show="!loading && error" class="error-banner danger" x-text="error"></div>
+
+    <!-- Course catalog -->
+    <div x-show="!loading && courses.length > 0">
+
+        <div class="flex-row between" style="margin-bottom: 18px; flex-wrap: wrap; gap: 14px;">
+            <label class="checkbox">
+                <input type="checkbox" @change="toggleAll($event.target.checked)"
+                       :checked="selected.length === courses.length && courses.length > 0">
+                <span class="checkbox-mark"></span>
+                <span class="upcase">全选 <span x-text="`(${courses.length})`"></span></span>
+            </label>
+            <input type="text" class="input" style="max-width: 260px;"
+                   placeholder="按课程名过滤…" x-model="filter">
+        </div>
+
+        <div class="course-grid stagger">
+            <template x-for="c in filteredCourses()" :key="c.courseId">
+                <div class="course-card"
+                     :class="selected.includes(c.courseId) ? 'selected' : ''"
+                     @click="toggle(c.courseId)">
+                    <div class="course-id" x-text="`№ ${c.courseId}`"></div>
+                    <div class="course-title" x-text="c.title"></div>
+                    <div class="course-teacher" x-text="c.teacher ? `by ${c.teacher}` : ''"></div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <div x-show="!loading && courses.length === 0 && !error" class="empty">
+        本身份下无可用课程
+    </div>
+
+    <!-- Launch Modal -->
+    <template x-teleport="body">
+        <div class="modal-backdrop" x-show="launching" x-transition.opacity
+             data-modal-open="true" @modal-escape.window="launching = false"
+             @click.self="launching = false" style="display: none;">
+            <div class="modal" @click.stop style="max-width: 580px;">
+                <div class="modal-head">
+                    <div class="modal-title"><span class="num">▶</span>启动操作</div>
+                    <button type="button" class="modal-close" @click="launching = false">×</button>
+                </div>
+                <form @submit.prevent="submitLaunch">
+                    <div class="modal-body">
+
+                        <div class="error-banner" style="border-color: var(--line); background: rgba(94,234,212,0.04); color: var(--bone-dim);">
+                            <span class="muted upcase">目标</span><br>
+                            <span class="serif" style="font-size: 1.05rem; color: var(--bone);"
+                                  x-text="`${selected.length} 个课程已入队`"></span>
+                            <span class="muted" style="font-size: 0.75rem;"
+                                  x-show="selected.length === courses.length"> · 全部课程</span>
+                        </div>
+
+                        <div class="field">
+                            <label class="field-label">执行模式</label>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                <button type="button"
+                                        @click="launch.mode = 'normal'"
+                                        :class="launch.mode === 'normal' ? 'btn btn-primary' : 'btn btn-ghost'"
+                                        style="flex-direction: column; align-items: flex-start; padding: 14px; gap: 4px; height: auto;">
+                                    <span style="display: flex; align-items: center; gap: 8px;">
+                                        <span class="glyph">◐</span>
+                                        <span style="font-weight: 500;">正常模式</span>
+                                    </span>
+                                    <span style="text-transform: none; letter-spacing: 0; font-size: 0.7rem; color: var(--bone-mute); font-weight: 400;">
+                                        真实播放模拟
+                                    </span>
+                                </button>
+                                <button type="button"
+                                        @click="launch.mode = 'quick'"
+                                        :class="launch.mode === 'quick' ? 'btn btn-warning' : 'btn btn-ghost'"
+                                        style="flex-direction: column; align-items: flex-start; padding: 14px; gap: 4px; height: auto;">
+                                    <span style="display: flex; align-items: center; gap: 8px;">
+                                        <span class="glyph">⚡</span>
+                                        <span style="font-weight: 500;">快速模式</span>
+                                    </span>
+                                    <span style="text-transform: none; letter-spacing: 0; font-size: 0.7rem; color: var(--bone-mute); font-weight: 400;">
+                                        一次性上报时长
+                                    </span>
+                                </button>
+                            </div>
+                            <span class="field-hint" x-show="launch.mode === 'quick'">
+                                ⚠ 防拖动 / 人脸抓拍章节将自动降级至正常模式。
+                            </span>
+                        </div>
+
+                        <div class="form-grid" x-show="launch.mode !== 'quick'">
+                            <div class="field col-6">
+                                <label class="field-label">视频倍速 <span class="muted">1.0–2.0</span></label>
+                                <input type="number" class="input tabular" min="1" max="2" step="0.1" x-model.number="launch.speed">
+                            </div>
+                            <div class="field col-6">
+                                <label class="field-label">并发任务 <span class="muted">1–16</span></label>
+                                <input type="number" class="input tabular" min="1" max="16" x-model.number="launch.jobs">
+                            </div>
+                        </div>
+
+                        <div class="field" x-show="launch.mode === 'quick'">
+                            <label class="field-label">并发任务 <span class="muted">1–16</span></label>
+                            <input type="number" class="input tabular" min="1" max="16" x-model.number="launch.jobs">
+                        </div>
+
+                        <div class="field">
+                            <label class="field-label">遇到锁定章节</label>
+                            <select class="select" x-model="launch.notopen_action">
+                                <option value="retry">重试 · 重新尝试前一章节</option>
+                                <option value="continue">跳过 · 跳过并继续下一个</option>
+                                <option value="ask">询问 · 等同于重试</option>
+                            </select>
+                        </div>
+
+                    </div>
+                    <div class="modal-foot">
+                        <button type="button" class="btn btn-ghost" @click="launching = false">取消</button>
+                        <button type="submit"
+                                :class="launch.mode === 'quick' ? 'btn btn-warning' : 'btn btn-primary'"
+                                :disabled="submitting">
+                            <span x-show="!submitting">
+                                <span class="glyph" x-text="launch.mode === 'quick' ? '⚡' : '▶'"></span>
+                                <span>启动</span>
+                            </span>
+                            <span x-show="submitting" class="spinner"></span>
+                            <span x-show="submitting">启动中…</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </template>
+</div>
+
+<script>
+function coursesPage(accountId) {
+    return {
+        accountId,
+        account: {},
+        courses: [],
+        selected: [],
+        filter: '',
+        loading: true,
+        error: '',
+        launching: false,
+        submitting: false,
+        launch: {speed: 1.0, jobs: 4, notopen_action: 'retry', mode: 'normal'},
+        async init() {
+            const accs = await fetch('/api/accounts').then(r => r.json()).catch(() => []);
+            this.account = accs.find(a => a.id === this.accountId) || {};
+            await this.refresh(false);
+        },
+        async refresh(force) {
+            this.loading = true;
+            this.error = '';
+            try {
+                const url = `/api/accounts/${this.accountId}/courses${force ? '?refresh=true' : ''}`;
+                const res = await fetch(url);
+                if (!res.ok) {
+                    const j = await res.json();
+                    this.error = j.detail || '加载失败';
+                    this.courses = [];
+                } else {
+                    const j = await res.json();
+                    this.courses = j.courses;
+                }
+            } catch (e) {
+                this.error = String(e);
+            } finally {
+                this.loading = false;
+            }
+        },
+        filteredCourses() {
+            const f = this.filter.trim().toLowerCase();
+            if (!f) return this.courses;
+            return this.courses.filter(c => (c.title || '').toLowerCase().includes(f));
+        },
+        toggle(id) {
+            const i = this.selected.indexOf(id);
+            if (i >= 0) this.selected.splice(i, 1);
+            else this.selected.push(id);
+        },
+        toggleAll(checked) {
+            this.selected = checked ? this.courses.map(c => c.courseId) : [];
+        },
+        hasSelection() { return this.selected.length > 0; },
+        openLaunch() { this.launching = true; },
+        async submitLaunch() {
+            this.submitting = true;
+            try {
+                const payload = {
+                    account_id: this.accountId,
+                    course_ids: this.selected.length === this.courses.length ? null : this.selected,
+                    speed: this.launch.speed,
+                    jobs: this.launch.jobs,
+                    notopen_action: this.launch.notopen_action,
+                    mode: this.launch.mode,
+                };
+                const res = await fetch('/api/tasks', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload),
+                });
+                const j = await res.json();
+                if (res.ok) {
+                    showToast('operation dispatched', 'success');
+                    location.href = `/tasks/${j.id}`;
+                } else {
+                    showToast(j.detail || '启动失败', 'danger');
+                }
+            } finally {
+                this.submitting = false;
+            }
+        },
+    };
+}
+</script>
+{% endblock %}

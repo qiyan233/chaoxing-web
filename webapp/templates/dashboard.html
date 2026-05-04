@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}总览 · {{ app_name }}{% endblock %}
+{% block content %}
+<div x-data="dashboard()" x-init="init()">
+
+    <header class="page-head">
+        <div>
+            <div class="page-eyebrow">// 态势室</div>
+            <h1 class="page-title">总览 <span class="serif" style="color: var(--bone-mute);">— 实时快照。</span></h1>
+            <p class="page-sub">受控账号与飞行中的操作实时视图。</p>
+        </div>
+        <div class="page-actions">
+            <a href="/tasks" class="btn btn-ghost">
+                <span class="glyph">›</span>
+                <span>查看全部</span>
+            </a>
+        </div>
+    </header>
+
+    <section class="stat-grid stagger">
+        <div class="stat-cell">
+            <div class="stat-key">账号</div>
+            <div class="stat-value tabular" x-text="String(stats.accounts).padStart(2,'0')"></div>
+            <div class="stat-foot">已注册身份</div>
+        </div>
+        <div class="stat-cell live">
+            <div class="stat-key">飞行中</div>
+            <div class="stat-value tabular" x-text="String(stats.running).padStart(2,'0')"></div>
+            <div class="stat-foot">运行中的操作</div>
+        </div>
+        <div class="stat-cell warn">
+            <div class="stat-key">已完成</div>
+            <div class="stat-value tabular" x-text="String(stats.completed).padStart(2,'0')"></div>
+            <div class="stat-foot">最近 10 次</div>
+        </div>
+        <div class="stat-cell err">
+            <div class="stat-key">失败</div>
+            <div class="stat-value tabular" x-text="String(stats.failed).padStart(2,'0')"></div>
+            <div class="stat-foot">需要检查</div>
+        </div>
+    </section>
+
+    <div class="content-split">
+
+        <section class="panel bracketed">
+            <header class="panel-head">
+                <span><span class="num">№ 03</span> 最近操作</span>
+                <span class="muted" style="font-size: 0.66rem;" x-text="`${recentTasks.length} 条`"></span>
+            </header>
+            <div class="row-list">
+                <div class="row row-head row-recent">
+                    <span>编号</span>
+                    <span>账号</span>
+                    <span>状态</span>
+                    <span>进度</span>
+                    <span></span>
+                </div>
+                <template x-for="t in recentTasks" :key="t.id">
+                    <div class="row row-recent">
+                        <span class="col-id" x-text="`#${String(t.id).padStart(3,'0')}`"></span>
+                        <span x-text="phoneOf(t.account_id)"></span>
+                        <span><span class="tag" :class="tagClass(t.status)" x-text="t.status"></span></span>
+                        <span class="flex-col" style="gap: 4px;">
+                            <span class="progress-ascii" x-text="window.fmtAscii(t.done_chapters, t.total_chapters, 14)"></span>
+                            <span class="muted tabular" style="font-size: 0.7rem;" x-text="`${t.done_chapters}/${t.total_chapters}`"></span>
+                        </span>
+                        <span class="col-actions">
+                            <a class="btn btn-ghost btn-sm" :href="`/tasks/${t.id}`">
+                                <span class="glyph">→</span>
+                            </a>
+                        </span>
+                    </div>
+                </template>
+                <div class="empty" x-show="recentTasks.length === 0">暂无操作 · 启动一个</div>
+            </div>
+        </section>
+
+        <section class="panel bracketed">
+            <header class="panel-head">
+                <span><span class="num">№ 04</span> 账号簿</span>
+                <span class="muted" style="font-size: 0.66rem;" x-text="`${accounts.length} 个`"></span>
+            </header>
+            <div class="row-list">
+                <template x-for="a in accounts" :key="a.id">
+                    <div class="row row-accstat">
+                        <span class="flex-col" style="gap: 2px;">
+                            <strong x-text="a.nickname || a.phone"></strong>
+                            <span class="muted" style="font-size: 0.7rem;" x-text="a.phone"></span>
+                        </span>
+                        <span><span class="tag" :class="acctTag(a.status)" x-text="a.status"></span></span>
+                    </div>
+                </template>
+                <div class="empty" x-show="accounts.length === 0">账号簿空 · 注册首个身份</div>
+            </div>
+            <div class="panel-body" style="border-top: 1px solid var(--line);">
+                <a href="/accounts" class="btn btn-primary btn-block btn-sm">
+                    <span class="glyph">+</span>
+                    <span>管理账号</span>
+                </a>
+            </div>
+        </section>
+
+    </div>
+</div>
+
+<script>
+function dashboard() {
+    return {
+        accounts: [],
+        recentTasks: [],
+        stats: {accounts: 0, running: 0, completed: 0, failed: 0},
+        async init() {
+            await this.refresh();
+            setInterval(() => this.refresh(), 5000);
+        },
+        async refresh() {
+            try {
+                const [aRes, tRes] = await Promise.all([
+                    fetch('/api/accounts').then(r => r.json()),
+                    fetch('/api/tasks?limit=10').then(r => r.json()),
+                ]);
+                this.accounts = aRes;
+                this.recentTasks = tRes;
+                this.stats.accounts = aRes.length;
+                this.stats.running = tRes.filter(t => t.status === 'running').length;
+                this.stats.completed = tRes.filter(t => t.status === 'completed').length;
+                this.stats.failed = tRes.filter(t => t.status === 'failed').length;
+            } catch (e) {}
+        },
+        phoneOf(id) {
+            const a = this.accounts.find(x => x.id === id);
+            return a ? (a.nickname || a.phone) : `#${id}`;
+        },
+        tagClass(s) {
+            return ({
+                pending:   'tag-pending',
+                running:   'tag-running',
+                completed: 'tag-success',
+                failed:    'tag-fail',
+                cancelled: 'tag-cancel',
+            })[s] || 'tag-pending';
+        },
+        acctTag(s) {
+            return ({
+                idle:    'tag-pending',
+                running: 'tag-running',
+                error:   'tag-fail',
+            })[s] || 'tag-pending';
+        },
+    };
+}
+</script>
+{% endblock %}

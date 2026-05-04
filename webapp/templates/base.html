@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{{ app_name }}{% endblock %}</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;600;700&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="/static/css/custom.css">
+</head>
+<body>
+{% if authenticated %}
+<div class="shell">
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-mark">Chaoxing Studio</div>
+            <div class="brand-name">书院<br>控制台</div>
+            <div class="brand-sub">课程、账号与任务的本地中枢</div>
+        </div>
+
+        <nav class="nav-section">
+            <div class="nav-label">// 控制面板</div>
+            <a class="nav-link {% if page == 'dashboard' %}active{% endif %}" href="/dashboard">
+                <span>总览</span>
+                <span class="nav-num">01</span>
+            </a>
+            <a class="nav-link {% if page == 'accounts' %}active{% endif %}" href="/accounts">
+                <span>账号</span>
+                <span class="nav-num">02</span>
+            </a>
+            <a class="nav-link {% if page == 'tasks' %}active{% endif %}" href="/tasks">
+                <span>操作</span>
+                <span class="nav-num">03</span>
+            </a>
+            <a class="nav-link {% if page == 'settings' %}active{% endif %}" href="/settings">
+                <span>配置</span>
+                <span class="nav-num">04</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-foot">
+            <hr class="divider-dashed">
+            <div class="foot-line">
+                <span class="foot-key">会话</span>
+                <span style="color: var(--phos);">● 在线</span>
+            </div>
+            <div class="foot-line">
+                <span class="foot-key">时间</span>
+                <span class="tabular" id="clock">—</span>
+            </div>
+            <button class="btn btn-ghost btn-block btn-sm" style="margin-top: 8px;" onclick="logout(); return false;">
+                <span class="glyph">↗</span>
+                <span>登出</span>
+            </button>
+        </div>
+    </aside>
+
+    <main class="main">
+        {% block content %}{% endblock %}
+    </main>
+</div>
+{% else %}
+<div class="auth-frame">
+    {% block auth_content %}{% endblock %}
+</div>
+{% endif %}
+
+<div class="toast-stack"></div>
+
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+<script src="/static/js/app.js"></script>
+<script>
+  (function tickClock() {
+    const el = document.getElementById('clock');
+    if (!el) return;
+    const update = () => {
+      const d = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      el.textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    };
+    update();
+    setInterval(update, 1000);
+  })();
+</script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

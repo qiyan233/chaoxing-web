@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Roster · {{ app_name }}{% endblock %}
+{% block content %}
+<div x-data="accountsPage()" x-init="init()">
+
+    <header class="page-head">
+        <div>
+            <div class="page-eyebrow">// roster · 02</div>
+            <h1 class="page-title">Roster <span class="serif" style="color: var(--bone-mute);">— identities under control.</span></h1>
+            <p class="page-sub">Each entry is a Chaoxing handle. Passwords are sealed with a local Fernet key.</p>
+        </div>
+        <div class="page-actions">
+            <button class="btn btn-primary" @click="openCreate">
+                <span class="glyph">+</span>
+                <span>注册身份</span>
+            </button>
+        </div>
+    </header>
+
+    <section class="panel bracketed">
+        <div class="row-list">
+            <div class="row row-head row-accounts">
+                <span>编号</span>
+                <span>账号</span>
+                <span>昵称</span>
+                <span>状态</span>
+                <span>最后登入</span>
+                <span style="text-align: right;">操作</span>
+            </div>
+            <template x-for="a in accounts" :key="a.id">
+                <div class="row row-accounts">
+                    <span class="col-id" x-text="`#${String(a.id).padStart(3,'0')}`"></span>
+                    <span class="col-name tabular" x-text="a.phone"></span>
+                    <span class="muted serif" x-text="a.nickname || '—'"></span>
+                    <span>
+                        <span class="tag" :class="acctTag(a.status)" x-text="a.status"></span>
+                        <span x-show="a.last_error" class="muted" style="font-size: 0.7rem; display: block; margin-top: 4px;" x-text="a.last_error"></span>
+                    </span>
+                    <span class="muted tabular" style="font-size: 0.75rem;"
+                          x-text="a.last_login_at ? window.fmtTime(a.last_login_at) : '—'"></span>
+                    <span class="col-actions">
+                        <a class="btn btn-ghost btn-sm" :href="`/accounts/${a.id}/courses`" title="courses">
+                            <span class="glyph">⌘</span>
+                            <span>courses</span>
+                        </a>
+                        <button class="btn btn-ghost btn-sm" @click="relogin(a)" title="reauthenticate">
+                            <span class="glyph">↻</span>
+                        </button>
+                        <button class="btn btn-ghost btn-sm" @click="remove(a)" title="remove" style="color: var(--crimson);">
+                            <span class="glyph">×</span>
+                        </button>
+                    </span>
+                </div>
+            </template>
+            <div class="empty" x-show="accounts.length === 0">
+                账号簿空<br>
+                <span style="font-size: 0.78rem; font-family: var(--mono); font-style: normal;">注册首个身份开始操作</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Enroll Modal -->
+    <template x-teleport="body">
+        <div class="modal-backdrop" x-show="creating" x-transition.opacity
+             data-modal-open="true" @modal-escape.window="creating = false"
+             @click.self="creating = false" style="display: none;">
+            <div class="modal" @click.stop>
+                <div class="modal-head">
+                    <div class="modal-title"><span class="num">+</span>注册身份</div>
+                    <button type="button" class="modal-close" @click="creating = false">×</button>
+                </div>
+                <form @submit.prevent="submitCreate">
+                    <div class="modal-body">
+                        <div class="field">
+                            <label class="field-label">phone <span class="req">*</span></label>
+                            <input type="text" class="input" x-model="form.phone" required placeholder="13800138000">
+                        </div>
+                        <div class="field">
+                            <label class="field-label">password <span class="req">*</span></label>
+                            <input type="password" class="input" x-model="form.password" required placeholder="• • • • • • • •">
+                        </div>
+                        <div class="field">
+                            <label class="field-label">alias <span class="muted" style="font-size: 0.6rem;">optional</span></label>
+                            <input type="text" class="input" x-model="form.nickname" placeholder="dorm_account / personal / …">
+                            <span class="field-hint">Helps when juggling multiple identities.</span>
+                        </div>
+                        <label class="checkbox">
+                            <input type="checkbox" x-model="form.verify_login">
+                            <span class="checkbox-mark"></span>
+                            <span>verify credentials immediately</span>
+                        </label>
+                    </div>
+                    <div class="modal-foot">
+                        <button type="button" class="btn btn-ghost" @click="creating = false">取消</button>
+                        <button type="submit" class="btn btn-primary" :disabled="submitting">
+                            <span x-show="!submitting">保存</span>
+                            <span x-show="submitting" class="spinner"></span>
+                            <span x-show="submitting">保存中…</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </template>
+</div>
+
+<script>
+function accountsPage() {
+    return {
+        accounts: [],
+        form: {phone: '', password: '', nickname: '', verify_login: true},
+        submitting: false,
+        creating: false,
+        async init() {
+            await this.refresh();
+        },
+        async refresh() {
+            this.accounts = await fetch('/api/accounts').then(r => r.json());
+        },
+        openCreate() {
+            this.form = {phone: '', password: '', nickname: '', verify_login: true};
+            this.creating = true;
+        },
+        async submitCreate() {
+            this.submitting = true;
+            try {
+                const res = await fetch('/api/accounts', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(this.form),
+                });
+                const j = await res.json();
+                if (res.ok) {
+                    showToast('身份已登记 ' + (j.status === 'error' ? '(' + (j.last_error || '登录失败') + ')' : ''),
+                              j.status === 'error' ? 'warning' : 'success');
+                    this.creating = false;
+                    await this.refresh();
+                } else {
+                    showToast(j.detail || '添加失败', 'danger');
+                }
+            } finally {
+                this.submitting = false;
+            }
+        },
+        async relogin(a) {
+            showToast(`重新认证 ${a.phone} …`, 'info');
+            const res = await fetch(`/api/accounts/${a.id}/login`, {method: 'POST'});
+            const j = await res.json();
+            showToast(j.msg || '完成', j.status ? 'success' : 'danger');
+            await this.refresh();
+        },
+        async remove(a) {
+            if (!confirm(`确定移除身份 ${a.phone} ?`)) return;
+            const res = await fetch(`/api/accounts/${a.id}`, {method: 'DELETE'});
+            if (res.ok) {
+                showToast('已移除', 'success');
+                await this.refresh();
+            } else {
+                showToast('移除失败', 'danger');
+            }
+        },
+        acctTag(s) {
+            return ({
+                idle:    'tag-pending',
+                running: 'tag-running',
+                error:   'tag-fail',
+            })[s] || 'tag-pending';
+        },
+    };
+}
+</script>
+{% endblock %}

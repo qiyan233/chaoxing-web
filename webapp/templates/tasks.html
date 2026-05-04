@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Operations · {{ app_name }}{% endblock %}
+{% block content %}
+<div x-data="tasksPage()" x-init="init()">
+
+    <header class="page-head">
+        <div>
+            <div class="page-eyebrow">// 操作 · 03</div>
+            <h1 class="page-title">操作 <span class="serif" style="color: var(--bone-mute);">— 飞行中与已归档。</span></h1>
+            <p class="page-sub">每个派遣的学习任务都在这里。打开任意条目查看直播流。</p>
+        </div>
+        <div class="page-actions">
+            <button class="btn btn-ghost" @click="refresh()">
+                <span class="glyph">↻</span>
+                <span>刷新</span>
+            </button>
+        </div>
+    </header>
+
+    <section class="panel bracketed">
+        <div class="row-list">
+            <div class="row row-head row-tasks">
+                <span>编号</span>
+                <span>账号</span>
+                <span>状态</span>
+                <span>进度</span>
+                <span>焦点</span>
+                <span>启动时间</span>
+                <span style="text-align: right;">操作</span>
+            </div>
+            <template x-for="t in tasks" :key="t.id">
+                <div class="row row-tasks">
+                    <span class="col-id" x-text="`#${String(t.id).padStart(3,'0')}`"></span>
+                    <span class="col-name" x-text="phoneOf(t.account_id)"></span>
+                    <span class="flex-col" style="gap: 4px;">
+                        <span class="tag" :class="tagClass(t.status)" x-text="t.status"></span>
+                        <span class="tag" :class="t.mode === 'quick' ? 'tag-quick' : 'tag-normal'"
+                              style="font-size: 0.6rem; letter-spacing: 0.18em;"
+                              x-text="t.mode === 'quick' ? 'quick' : 'normal'"></span>
+                    </span>
+                    <span class="flex-col" style="gap: 4px;">
+                        <span class="progress-ascii" x-text="window.fmtAscii(t.done_chapters, t.total_chapters, 18)"
+                              :style="t.status === 'failed' ? 'color: var(--crimson);' : t.status === 'cancelled' ? 'color: var(--bone-mute);' : ''"></span>
+                        <span class="muted tabular" style="font-size: 0.7rem;"
+                              x-text="`${t.done_chapters}/${t.total_chapters} · ${window.fmtPct(t.done_chapters,t.total_chapters)}%`"></span>
+                    </span>
+                    <span class="flex-col" style="gap: 2px; min-width: 0;">
+                        <span x-text="t.current_chapter || '—'" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+                        <span class="muted serif" style="font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                              x-text="t.current_course || ''"></span>
+                    </span>
+                    <span class="muted tabular" style="font-size: 0.75rem;"
+                          x-text="t.started_at ? window.fmtTime(t.started_at) : '—'"></span>
+                    <span class="col-actions">
+                        <a class="btn btn-ghost btn-sm" :href="`/tasks/${t.id}`">
+                            <span class="glyph">→</span>
+                            <span>打开</span>
+                        </a>
+                        <button class="btn btn-ghost btn-sm" style="color: var(--crimson);"
+                                x-show="['pending','running'].includes(t.status)"
+                                @click="cancel(t)" title="中止">
+                            <span class="glyph">×</span>
+                        </button>
+                    </span>
+                </div>
+            </template>
+            <div class="empty" x-show="tasks.length === 0">
+                尚未派遣任何操作
+            </div>
+        </div>
+    </section>
+</div>
+
+<script>
+function tasksPage() {
+    return {
+        tasks: [],
+        accounts: [],
+        async init() {
+            await this.refresh();
+            setInterval(() => this.refresh(), 3000);
+        },
+        async refresh() {
+            try {
+                const [tRes, aRes] = await Promise.all([
+                    fetch('/api/tasks?limit=100').then(r => r.json()),
+                    fetch('/api/accounts').then(r => r.json()),
+                ]);
+                this.tasks = tRes;
+                this.accounts = aRes;
+            } catch (e) {}
+        },
+        phoneOf(id) {
+            const a = this.accounts.find(x => x.id === id);
+            return a ? (a.nickname || a.phone) : `#${id}`;
+        },
+        tagClass(s) {
+            return ({
+                pending:   'tag-pending',
+                running:   'tag-running',
+                completed: 'tag-success',
+                failed:    'tag-fail',
+                cancelled: 'tag-cancel',
+            })[s] || 'tag-pending';
+        },
+        async cancel(t) {
+            if (!confirm(`确定取消任务 #${t.id}?`)) return;
+            const res = await fetch(`/api/tasks/${t.id}/cancel`, {method: 'POST'});
+            const j = await res.json();
+            showToast(j.msg || '已取消', j.status ? 'success' : 'warning');
+            await this.refresh();
+        },
+    };
+}
+</script>
+{% endblock %}

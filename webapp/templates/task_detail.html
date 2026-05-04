@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+{% block title %}操作 #{{ task_id }} · {{ app_name }}{% endblock %}
+{% block content %}
+<div x-data="taskDetail({{ task_id }})" x-init="init()">
+
+    <header class="page-head">
+        <div>
+            <div class="page-eyebrow">
+                <a href="/tasks" style="color: inherit;">↰ 操作</a>
+                <span style="margin: 0 12px; color: var(--bone-faint);">/</span>
+                <span class="tabular" x-text="`#${String(task.id).padStart(3,'0')}`"></span>
+            </div>
+            <h1 class="page-title-mono">
+                操作
+                <span class="tabular" style="color: var(--phos);" x-text="`№ ${String(task.id).padStart(3,'0')}`"></span>
+            </h1>
+            <p class="page-sub">
+                <span x-text="phoneOf(task.account_id)"></span>
+                <span style="color: var(--bone-faint); margin: 0 8px;">·</span>
+                <span x-text="task.started_at ? window.fmtTime(task.started_at) : '待派遣'"></span>
+            </p>
+        </div>
+        <div class="page-actions">
+            <span class="tag" :class="tagClass(task.status)" style="font-size: 0.72rem;" x-text="task.status"></span>
+            <button class="btn btn-danger" x-show="['pending','running'].includes(task.status)" @click="cancel">
+                <span class="glyph">×</span>
+                <span>中止</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Big progress block -->
+    <section class="content-split">
+
+        <div class="panel bracketed">
+            <div class="panel-head">
+                <span><span class="num">№</span> 总体进度</span>
+                <span class="muted" style="font-size: 0.66rem;" x-text="`${percent()}% · ${task.done_chapters}/${task.total_chapters}`"></span>
+            </div>
+            <div class="panel-body">
+
+                <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 14px; gap: 18px;">
+                    <div class="flex-col" style="gap: 4px;">
+                        <span class="upcase muted">章节已清除</span>
+                        <div style="font-size: 3.4rem; font-weight: 200; line-height: 1; letter-spacing: -0.04em;"
+                             class="tabular">
+                            <span x-text="task.done_chapters"></span>
+                            <span style="color: var(--bone-faint); font-weight: 200;">/</span>
+                            <span style="color: var(--bone-mute);" x-text="task.total_chapters"></span>
+                        </div>
+                    </div>
+                    <div class="flex-col" style="text-align: right; gap: 4px;">
+                        <span class="upcase muted">完成度</span>
+                        <div style="font-size: 3.4rem; font-weight: 200; line-height: 1; letter-spacing: -0.04em; color: var(--phos);"
+                             class="tabular"
+                             x-text="`${percent()}%`"></div>
+                    </div>
+                </div>
+
+                <div class="progress thick">
+                    <div class="progress-bar"
+                         :class="{
+                             run: task.status === 'running',
+                             fail: task.status === 'failed',
+                             cancel: task.status === 'cancelled',
+                         }"
+                         :style="`width:${percent()}%`"></div>
+                </div>
+
+                <div class="progress-ascii" style="margin-top: 16px; font-size: 0.85rem; letter-spacing: 0;"
+                     x-text="window.fmtAscii(task.done_chapters, task.total_chapters, 48)"></div>
+
+                <hr class="divider-dashed" style="margin: 22px 0;">
+
+                <div class="kv-grid">
+                    <span class="kv-key">课程</span>
+                    <span class="kv-val serif" x-text="task.current_course || '—'"></span>
+                    <span class="kv-key">章节</span>
+                    <span class="kv-val" x-text="task.current_chapter || '—'"></span>
+                </div>
+
+                <template x-if="videoEvent">
+                    <div style="margin-top: 18px; padding: 14px; border: 1px solid var(--line); background: var(--ink);">
+                        <div class="upcase muted" style="margin-bottom: 8px;">▶ 正在流媒体</div>
+                        <div style="display: flex; justify-content: space-between; gap: 10px; margin-bottom: 6px;">
+                            <span style="font-weight: 500;" x-text="videoEvent.job_name"></span>
+                            <span class="muted tabular" style="font-size: 0.78rem;"
+                                  x-text="`${videoEvent.play_time}s / ${videoEvent.duration}s`"></span>
+                        </div>
+                        <div class="progress">
+                            <div class="progress-bar run"
+                                 :style="`width:${videoEvent.duration ? videoEvent.play_time/videoEvent.duration*100 : 0}%`"></div>
+                        </div>
+                    </div>
+                </template>
+
+            </div>
+        </div>
+
+        <div class="panel bracketed">
+            <div class="panel-head"><span><span class="num">№</span> 档案</span></div>
+            <div class="panel-body">
+                <div class="kv-grid">
+                    <span class="kv-key">账号</span>
+                    <span class="kv-val" x-text="phoneOf(task.account_id)"></span>
+
+                    <span class="kv-key">模式</span>
+                    <span class="kv-val">
+                        <span class="tag" :class="task.mode === 'quick' ? 'tag-quick' : 'tag-normal'"
+                              x-text="task.mode === 'quick' ? '⚡ quick' : '◐ normal'"></span>
+                    </span>
+
+                    <span class="kv-key">速度</span>
+                    <span class="kv-val tabular" x-text="`${task.speed}×`"></span>
+
+                    <span class="kv-key">任务数</span>
+                    <span class="kv-val tabular" x-text="task.jobs"></span>
+
+                    <span class="kv-key">遇到锁定</span>
+                    <span class="kv-val" x-text="task.notopen_action"></span>
+
+                    <span class="kv-key">启动时间</span>
+                    <span class="kv-val tabular" style="font-size: 0.75rem;"
+                          x-text="task.started_at ? window.fmtTime(task.started_at) : '—'"></span>
+
+                    <span class="kv-key">完成时间</span>
+                    <span class="kv-val tabular" style="font-size: 0.75rem;"
+                          x-text="task.finished_at ? window.fmtTime(task.finished_at) : '—'"></span>
+                </div>
+
+                <div x-show="task.error_message" class="error-banner danger" style="margin-top: 16px;"
+                     x-text="task.error_message"></div>
+            </div>
+        </div>
+
+    </section>
+
+        <!-- Live log terminal -->
+    <section class="terminal">
+        <div class="terminal-head">
+            <div class="terminal-dots">
+                <span></span><span></span><span></span>
+            </div>
+            <span class="terminal-title">tty/op-<span x-text="task.id"></span>.log</span>
+            <div class="terminal-status">
+                <span class="tag" style="font-size: 0.6rem;"
+                      :class="connected ? 'tag-success' : 'tag-cancel'"
+                      x-text="connected ? '直播' : '离线'"></span>
+                <button class="btn btn-ghost btn-sm" @click="autoScroll = !autoScroll"
+                        :style="autoScroll ? 'color: var(--phos);' : ''">
+                    <span class="glyph" x-text="autoScroll ? '⇣' : '⇡'"></span>
+                    <span>滚动</span>
+                </button>
+            </div>
+        </div>
+        <div class="term-body" x-ref="logBox">
+            <template x-for="(line, idx) in logs" :key="idx">
+                <div class="log-line" :class="`log-${(line.level || 'info').toLowerCase()}`">
+                    <span class="ts tabular" x-text="line.ts"></span>
+                    <span class="lv" x-text="(line.level || 'info').toUpperCase()"></span>
+                    <span class="msg" x-text="line.message"></span>
+                </div>
+            </template>
+            <div x-show="logs.length === 0" class="muted serif" style="padding: 32px 0; text-align: center;">
+                等待信号…
+            </div>
+        </div>
+    </section>
+</div>
+
+<script>
+function taskDetail(taskId) {
+    return {
+        taskId,
+        task: {id: taskId, status: 'pending', done_chapters: 0, total_chapters: 0, mode: 'normal'},
+        accounts: [],
+        logs: [],
+        videoEvent: null,
+        connected: false,
+        autoScroll: true,
+        evtSource: null,
+        async init() {
+            this.accounts = await fetch('/api/accounts').then(r => r.json()).catch(() => []);
+            await this.refreshTask();
+            await this.loadHistoryLogs();
+            this.connectStream();
+            setInterval(() => this.refreshTask(), 5000);
+        },
+        async refreshTask() {
+            const res = await fetch(`/api/tasks/${this.taskId}`);
+            if (res.ok) this.task = await res.json();
+        },
+        async loadHistoryLogs() {
+            const res = await fetch(`/api/tasks/${this.taskId}/logs?limit=200`);
+            if (res.ok) {
+                const lines = await res.json();
+                lines.forEach(l => this.appendLog({
+                    level: l.level,
+                    message: l.message,
+                    ts: window.fmtClock(l.created_at),
+                }));
+            }
+        },
+        connectStream() {
+            if (this.evtSource) this.evtSource.close();
+            const es = new EventSource(`/api/tasks/${this.taskId}/stream`);
+            this.evtSource = es;
+            es.onopen = () => { this.connected = true; };
+            es.onerror = () => { this.connected = false; };
+            es.onmessage = (e) => {
+                let evt;
+                try { evt = JSON.parse(e.data); } catch { return; }
+                this.handleEvent(evt);
+            };
+        },
+        handleEvent(evt) {
+            const ts = window.fmtClock(new Date());
+            switch (evt.type) {
+                case 'snapshot':
+                case 'task_replay_end':
+                    if (evt.done !== undefined) this.task.done_chapters = evt.done;
+                    if (evt.total !== undefined) this.task.total_chapters = evt.total;
+                    if (evt.status) this.task.status = evt.status;
+                    break;
+                case 'log':
+                    this.appendLog({level: evt.level, message: evt.message, ts});
+                    break;
+                case 'task_started':
+                    this.task.status = 'running';
+                    this.appendLog({level: 'info', message: '◉ operation started', ts});
+                    break;
+                case 'logged_in':
+                    this.appendLog({level: 'info', message: '◉ identity authenticated', ts});
+                    break;
+                case 'courses_loaded':
+                    this.appendLog({level: 'info', message: `▸ catalog loaded · ${evt.count} courses`, ts});
+                    break;
+                case 'total_calculated':
+                    this.task.total_chapters = evt.total_chapters;
+                    break;
+                case 'course_started':
+                    this.task.current_course = evt.course_title;
+                    this.appendLog({level: 'info', message: `▸ entering course · ${evt.course_title}`, ts});
+                    break;
+                case 'chapter_started':
+                    this.task.current_chapter = evt.chapter_title;
+                    this.task.done_chapters = evt.done;
+                    this.task.total_chapters = evt.total;
+                    break;
+                case 'chapter_finished':
+                    this.task.done_chapters = evt.done;
+                    this.task.total_chapters = evt.total;
+                    this.videoEvent = null;
+                    break;
+                case 'video_progress':
+                    this.videoEvent = evt;
+                    break;
+                case 'job_done':
+                    this.appendLog({level: 'success', message: `✓ subtask done · ${evt.job_name}`, ts});
+                    this.videoEvent = null;
+                    break;
+                case 'task_done':
+                    this.task.status = 'completed';
+                    this.appendLog({level: 'success', message: '◉ operation complete', ts});
+                    this.videoEvent = null;
+                    break;
+                case 'task_failed':
+                    this.task.status = 'failed';
+                    this.appendLog({level: 'error', message: `✕ operation failed · ${evt.message || ''}`, ts});
+                    this.videoEvent = null;
+                    break;
+                case 'task_cancelled':
+                    this.task.status = 'cancelled';
+                    this.appendLog({level: 'warning', message: '⊘ operation cancelled', ts});
+                    this.videoEvent = null;
+                    break;
+            }
+        },
+        appendLog(line) {
+            this.logs.push(line);
+            if (this.logs.length > 1000) this.logs.shift();
+            if (this.autoScroll) {
+                this.$nextTick(() => {
+                    const el = this.$refs.logBox;
+                    if (el) el.scrollTop = el.scrollHeight;
+                });
+            }
+        },
+        percent() {
+            if (!this.task.total_chapters) return 0;
+            return Math.floor(this.task.done_chapters / this.task.total_chapters * 100);
+        },
+        phoneOf(id) {
+            const a = this.accounts.find(x => x.id === id);
+            return a ? (a.nickname || a.phone) : `#${id}`;
+        },
+        tagClass(s) {
+            return ({
+                pending:   'tag-pending',
+                running:   'tag-running',
+                completed: 'tag-success',
+                failed:    'tag-fail',
+                cancelled: 'tag-cancel',
+            })[s] || 'tag-pending';
+        },
+        async cancel() {
+            if (!confirm('确定中止该操作?')) return;
+            const res = await fetch(`/api/tasks/${this.taskId}/cancel`, {method: 'POST'});
+            const j = await res.json();
+            showToast(j.msg || '已发送中止信号', 'warning');
+        },
+    };
+}
+</script>
+{% endblock %}
