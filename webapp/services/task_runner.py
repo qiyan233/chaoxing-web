@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import random
 import threading
 import time
 import traceback
@@ -242,6 +243,7 @@ class TaskRunner:
                 notopen_action = task.notopen_action
                 mode = task.mode or TaskMode.NORMAL.value
                 tiku_config = self._load_tiku_config(db)
+                proxy_config = self._load_proxy_config(db)
 
             # ----- 离开 DB session 后跑业务，避免长事务 -----
             self._publish(task_id, {"type": "task_started", "ts": time.time()})
@@ -259,6 +261,7 @@ class TaskRunner:
                     notopen_action=notopen_action,
                     mode=mode,
                     tiku_config=tiku_config,
+                    proxy_config=proxy_config,
                     cancel_event=cancel_event,
                 )
             except CancelledError:
@@ -294,6 +297,7 @@ class TaskRunner:
         notopen_action: str,
         mode: str,
         tiku_config: Dict[str, Any],
+        proxy_config: Dict[str, Any],
         cancel_event: threading.Event,
     ):
         """执行 Web 端学习流程：登录 → 拉课程 → 章节循环。"""
@@ -316,6 +320,10 @@ class TaskRunner:
 
         cookies_provider = DBCookiesProvider(account_id)
         holder = IsolatedSession(cookies_provider=cookies_provider)
+        proxy = self._choose_proxy(proxy_config, task_id)
+        if proxy:
+            holder.session.proxies.update({"http": proxy, "https": proxy})
+            self._log(task_id, "info", f"已启用代理: {self._mask_proxy(proxy)}")
 
         def progress_callback(event: dict):
             self._publish(task_id, {**event, "ts": time.time()})
@@ -528,6 +536,45 @@ class TaskRunner:
             except json.JSONDecodeError:
                 return {}
         return {}
+
+    def _load_proxy_config(self, db) -> Dict[str, Any]:
+        """从 app_settings 加载代理池配置"""
+        setting = db.get(AppSetting, AppSetting.KEY_PROXY_CONFIG)
+        if setting and setting.value:
+            try:
+                return json.loads(setting.value)
+            except json.JSONDecodeError:
+                return {}
+        return {}
+
+    @staticmethod
+    def _parse_proxy_lines(proxy_text: str) -> list[str]:
+        proxies = []
+        for line in (proxy_text or "").splitlines():
+            proxy = line.strip()
+            if not proxy or proxy.startswith("#"):
+                continue
+            proxies.append(proxy)
+        return proxies
+
+    def _choose_proxy(self, proxy_config: Dict[str, Any], task_id: int) -> Optional[str]:
+        if not proxy_config or not proxy_config.get("enabled"):
+            return None
+        proxies = self._parse_proxy_lines(str(proxy_config.get("proxies") or ""))
+        if not proxies:
+            return None
+        strategy = proxy_config.get("strategy") or "random"
+        if strategy == "round_robin":
+            return proxies[task_id % len(proxies)]
+        return random.choice(proxies)
+
+    @staticmethod
+    def _mask_proxy(proxy: str) -> str:
+        if "@" not in proxy:
+            return proxy
+        scheme, rest = proxy.split("://", 1) if "://" in proxy else ("", proxy)
+        host = rest.rsplit("@", 1)[-1]
+        return f"{scheme + '://' if scheme else ''}***:***@{host}"
 
 
 # 全局单例

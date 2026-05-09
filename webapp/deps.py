@@ -47,11 +47,21 @@ async def require_login(
         raise HTTPException(status_code=401, detail="未登录")
 
 
+async def require_admin(request: Request) -> None:
+    """要求管理员角色。当前单用户模式下登录者默认为 admin。"""
+    if not request.session.get("authenticated"):
+        raise HTTPException(status_code=401, detail="未登录")
+    role = request.session.get("role")
+    user = request.session.get("user")
+    if role != "admin" and user != "admin":
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+
+
 async def get_current_user(
     request: Request,
     db: AsyncSession = Depends(get_db_session),
 ) -> Optional[str]:
     """获取当前已登录用户标识（单用户模式下固定为 'admin'）"""
     if request.session.get("authenticated"):
-        return "admin"
+        return request.session.get("user") or "admin"
     return None

@@ -37,6 +37,14 @@ class NotificationConfig(BaseModel):
     tg_chat_id: str = Field(default="")
 
 
+class ProxyConfig(BaseModel):
+    """代理池配置（仅管理员可修改）"""
+    enabled: bool = Field(default=False)
+    proxies: str = Field(default="", description="代理列表，一行一个")
+    strategy: str = Field(default="random", pattern="^(random|round_robin)$")
+    failover: bool = Field(default=True, description="失败后是否允许后续任务切换代理")
+
+
 class AdminPasswordSet(BaseModel):
     new_password: str = Field(..., min_length=4, max_length=128)
     old_password: Optional[str] = None

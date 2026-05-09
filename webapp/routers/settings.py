@@ -6,11 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from webapp.deps import get_db_session, require_login
+from webapp.deps import get_db_session, require_admin
 from webapp.models.settings import AppSetting
-from webapp.schemas.settings import NotificationConfig, TikuConfig
+from webapp.schemas.settings import NotificationConfig, ProxyConfig, TikuConfig
 
-router = APIRouter(prefix="/api/settings", tags=["settings"], dependencies=[Depends(require_login)])
+router = APIRouter(prefix="/api/settings", tags=["settings"], dependencies=[Depends(require_admin)])
 
 
 async def _load_json(db: AsyncSession, key: str) -> dict:
@@ -67,3 +67,18 @@ async def save_notification(
 ):
     await _save_json(db, AppSetting.KEY_NOTIFICATION_CONFIG, payload.model_dump())
     return {"status": True, "msg": "通知配置已保存"}
+
+
+@router.get("/proxy", response_model=ProxyConfig)
+async def get_proxy(db: AsyncSession = Depends(get_db_session)):
+    data = await _load_json(db, AppSetting.KEY_PROXY_CONFIG)
+    return ProxyConfig(**data) if data else ProxyConfig()
+
+
+@router.post("/proxy")
+async def save_proxy(
+    payload: ProxyConfig,
+    db: AsyncSession = Depends(get_db_session),
+):
+    await _save_json(db, AppSetting.KEY_PROXY_CONFIG, payload.model_dump())
+    return {"status": True, "msg": "代理池配置已保存，新任务生效"}

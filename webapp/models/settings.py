@@ -9,7 +9,7 @@ from webapp.db import Base
 
 
 class AppSetting(Base):
-    """全局键值对配置（题库 / 通知 / 管理员密码哈希）"""
+    """全局键值对配置（题库 / 通知 / 代理 / 管理员密码哈希）"""
 
     __tablename__ = "app_settings"
 
@@ -23,4 +23,5 @@ class AppSetting(Base):
     KEY_ADMIN_PASSWORD = "admin_password_hash"
     KEY_TIKU_CONFIG = "tiku_config"
     KEY_NOTIFICATION_CONFIG = "notification_config"
+    KEY_PROXY_CONFIG = "proxy_config"
     KEY_RUNTIME_CONFIG = "runtime_config"  # max_concurrent_accounts 等

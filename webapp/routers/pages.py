@@ -18,6 +18,8 @@ def _ctx(request: Request, **extra) -> dict:
         "request": request,
         "app_name": APP_NAME,
         "user": request.session.get("user"),
+        "role": request.session.get("role") or ("admin" if request.session.get("user") == "admin" else None),
+        "is_admin": request.session.get("role") == "admin" or request.session.get("user") == "admin",
         "authenticated": request.session.get("authenticated", False),
     }
     ctx.update(extra)
@@ -105,4 +107,6 @@ async def settings_page(request: Request):
     redirect = _require_html_login(request)
     if redirect:
         return redirect
+    if request.session.get("role") != "admin" and request.session.get("user") != "admin":
+        return RedirectResponse("/dashboard", status_code=302)
     return _template(request, "settings.html", page="settings")

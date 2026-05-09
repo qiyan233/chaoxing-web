@@ -35,10 +35,12 @@
                 <span>操作</span>
                 <span class="nav-num">03</span>
             </a>
-            <a class="nav-link {% if page == 'settings' %}active{% endif %}" href="/settings">
-                <span>配置</span>
-                <span class="nav-num">04</span>
-            </a>
+            {% if is_admin %}
+                <a class="nav-link {% if page == 'settings' %}active{% endif %}" href="/settings">
+                    <span>配置</span>
+                    <span class="nav-num">04</span>
+                </a>
+            {% endif %}
         </nav>
 
         <div class="sidebar-foot">

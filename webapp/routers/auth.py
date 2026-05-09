@@ -5,7 +5,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from webapp.deps import get_db_session, is_admin_initialized
+from webapp.deps import get_db_session, is_admin_initialized, require_admin
 from webapp.models.settings import AppSetting
 from webapp.schemas.settings import AdminPasswordSet, LoginRequest
 from webapp.services.credential import (
@@ -35,6 +35,7 @@ async def setup_admin(
 
     request.session["authenticated"] = True
     request.session["user"] = "admin"
+    request.session["role"] = "admin"
     return {"status": True, "msg": "初始化成功"}
 
 
@@ -58,6 +59,7 @@ async def login(
 
     request.session["authenticated"] = True
     request.session["user"] = "admin"
+    request.session["role"] = "admin"
     return {"status": True, "msg": "登录成功"}
 
 
@@ -72,11 +74,9 @@ async def change_password(
     payload: AdminPasswordSet,
     request: Request,
     db: AsyncSession = Depends(get_db_session),
+    _: None = Depends(require_admin),
 ):
     """修改管理员密码（需先登录）"""
-    if not request.session.get("authenticated"):
-        raise HTTPException(status_code=401, detail="未登录")
-
     result = await db.execute(
         select(AppSetting).where(AppSetting.key == AppSetting.KEY_ADMIN_PASSWORD)
     )

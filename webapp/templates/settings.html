@@ -20,8 +20,12 @@
             <span class="tab-num">02</span>
             <span>通知</span>
         </button>
-        <button class="tab" :class="active === 'pwd' ? 'active' : ''" @click="active = 'pwd'">
+        <button class="tab" :class="active === 'proxy' ? 'active' : ''" @click="active = 'proxy'">
             <span class="tab-num">03</span>
+            <span>代理池</span>
+        </button>
+        <button class="tab" :class="active === 'pwd' ? 'active' : ''" @click="active = 'pwd'">
+            <span class="tab-num">04</span>
             <span>密码</span>
         </button>
     </div>
@@ -175,9 +179,53 @@
         </div>
     </section>
 
+    <!-- PROXY -->
+    <section class="panel bracketed" x-show="active === 'proxy'" x-transition.opacity>
+        <div class="panel-head"><span><span class="num">03</span> 代理池</span></div>
+        <div class="panel-body">
+            <form @submit.prevent="saveProxy" class="form-grid">
+                <div class="field col-4">
+                    <label class="field-label">启用代理池</label>
+                    <select class="select" x-model="proxy.enabled">
+                        <option :value="false">关闭</option>
+                        <option :value="true">开启</option>
+                    </select>
+                </div>
+                <div class="field col-4">
+                    <label class="field-label">选择策略</label>
+                    <select class="select" x-model="proxy.strategy">
+                        <option value="random">随机</option>
+                        <option value="round_robin">按任务轮询</option>
+                    </select>
+                </div>
+                <div class="field col-4">
+                    <label class="field-label">失败切换</label>
+                    <select class="select" x-model="proxy.failover">
+                        <option :value="true">允许后续任务切换</option>
+                        <option :value="false">固定当前选择</option>
+                    </select>
+                </div>
+                <div class="field col-12">
+                    <label class="field-label">代理列表 <span class="muted">一行一个 · 支持 http/https</span></label>
+                    <textarea class="input" rows="9" x-model="proxy.proxies"
+                              placeholder="http://user:pass@host:port&#10;http://host:port&#10;https://host:port"></textarea>
+                    <p class="muted" style="margin-top: 8px;">
+                        代理池仅对后续新启动的任务生效；当前运行中的任务不会被强制切换。带账号密码的代理日志会自动脱敏。
+                    </p>
+                </div>
+                <div class="col-12" style="text-align: right; margin-top: 8px;">
+                    <button type="submit" class="btn btn-primary">
+                        <span class="glyph">✓</span>
+                        <span>保存代理池</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </section>
+
     <!-- PWD -->
     <section class="panel bracketed" x-show="active === 'pwd'" x-transition.opacity>
-        <div class="panel-head"><span><span class="num">03</span> 轮换密码</span></div>
+        <div class="panel-head"><span><span class="num">04</span> 轮换密码</span></div>
         <div class="panel-body">
             <form @submit.prevent="changePassword" style="max-width: 460px; display: flex; flex-direction: column; gap: 16px;">
                 <div class="field">
@@ -209,13 +257,18 @@ function settingsPage() {
         active: 'tiku',
         tiku: {},
         notify: {},
+        proxy: {},
         pwd: {old: '', new: '', confirm: ''},
         async init() {
             this.tiku = await fetch('/api/settings/tiku').then(r => r.json());
             this.notify = await fetch('/api/settings/notification').then(r => r.json());
+            this.proxy = await fetch('/api/settings/proxy').then(r => r.json());
             // cast string booleans
             ['submit', 'likeapi_search', 'likeapi_vision', 'likeapi_retry', 'check_llm_connection'].forEach(k => {
                 if (typeof this.tiku[k] === 'string') this.tiku[k] = this.tiku[k] === 'true';
+            });
+            ['enabled', 'failover'].forEach(k => {
+                if (typeof this.proxy[k] === 'string') this.proxy[k] = this.proxy[k] === 'true';
             });
         },
         async saveTiku() {
@@ -232,6 +285,15 @@ function settingsPage() {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(this.notify),
+            });
+            const j = await res.json();
+            showToast(j.msg || (res.ok ? 'saved' : 'failed'), res.ok ? 'success' : 'danger');
+        },
+        async saveProxy() {
+            const res = await fetch('/api/settings/proxy', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(this.proxy),
             });
             const j = await res.json();
             showToast(j.msg || (res.ok ? 'saved' : 'failed'), res.ok ? 'success' : 'danger');
