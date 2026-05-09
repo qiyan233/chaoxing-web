@@ -735,6 +735,7 @@ a:hover { color: var(--gold); }
 }
 
 .row-accounts { grid-template-columns: 64px 1.2fr 1fr 132px 188px 200px; }
+.row-proxies { grid-template-columns: 64px 1.65fr 150px 110px 188px 240px; }
 .row-tasks { grid-template-columns: 64px 1fr 130px 1.35fr 1.35fr 188px 132px; }
 .row-recent { grid-template-columns: 58px 1fr 122px 196px 64px; }
 .row-accstat { grid-template-columns: 1fr auto; }
@@ -1227,8 +1228,10 @@ a:hover { color: var(--gold); }
 @media (max-width: 1180px) {
   :root { --sidebar-w: 232px; }
   .row-accounts,
+  .row-proxies,
   .row-tasks { grid-template-columns: 1fr; gap: 7px; }
   .row.row-head.row-accounts,
+  .row.row-head.row-proxies,
   .row.row-head.row-tasks { display: none; }
   .row .col-actions { justify-content: flex-start; }
 }

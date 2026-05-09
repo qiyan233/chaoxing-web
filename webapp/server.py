@@ -67,11 +67,12 @@ def create_app() -> FastAPI:
 
     # 路由注册（P4 阶段实现）
     try:
-        from webapp.routers import auth, accounts, tasks, settings as settings_router, pages, stream
+        from webapp.routers import auth, accounts, proxies, tasks, settings as settings_router, pages, stream
 
         app.include_router(pages.router)
         app.include_router(auth.router)
         app.include_router(accounts.router)
+        app.include_router(proxies.router)
         app.include_router(tasks.router)
         app.include_router(settings_router.router)
         app.include_router(stream.router)

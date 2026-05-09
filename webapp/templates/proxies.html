@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}代理池 · {{ app_name }}{% endblock %}
+{% block content %}
+<div x-data="proxiesPage()" x-init="init()">
+
+    <header class="page-head">
+        <div>
+            <div class="page-eyebrow">// proxy pool · 04</div>
+            <h1 class="page-title">代理池 <span class="serif" style="color: var(--bone-mute);">— 先测试，再入库。</span></h1>
+            <p class="page-sub">只有测试通过的代理会进入 active 池；失败代理会被过滤，不影响任务选择。</p>
+        </div>
+        <div class="page-actions">
+            <a class="btn btn-ghost" href="/settings">
+                <span class="glyph">⚙</span>
+                <span>任务代理策略</span>
+            </a>
+        </div>
+    </header>
+
+    <section class="panel bracketed" style="margin-bottom: 18px;">
+        <div class="panel-head"><span><span class="num">+</span> 添加代理</span></div>
+        <div class="panel-body">
+            <form class="form-grid" @submit.prevent="add">
+                <div class="field col-12">
+                    <label class="field-label">代理地址 <span class="muted">支持单个或多行，未写协议默认 http://</span></label>
+                    <textarea class="input" rows="5" x-model="form.proxy_url"
+                              placeholder="1.2.3.4:8080&#10;http://user:pass@host:port&#10;https://host:port"></textarea>
+                </div>
+                <div class="field col-6">
+                    <label class="field-label">测试地址</label>
+                    <input class="input" x-model="form.test_url" placeholder="http://httpbin.org/ip">
+                </div>
+                <div class="field col-3">
+                    <label class="field-label">超时秒数</label>
+                    <input type="number" class="input" min="1" max="30" step="0.5" x-model.number="form.timeout_seconds">
+                </div>
+                <div class="field col-3" style="justify-content: flex-end;">
+                    <button type="submit" class="btn btn-primary" :disabled="submitting">
+                        <span x-show="!submitting">测试并添加</span>
+                        <span x-show="submitting" class="spinner"></span>
+                        <span x-show="submitting">测试中…</span>
+                    </button>
+                </div>
+            </form>
+
+            <div x-show="lastFailed.length" style="margin-top: 18px;">
+                <div class="muted" style="margin-bottom: 8px;">最近过滤的不可用代理</div>
+                <template x-for="f in lastFailed" :key="f.proxy_url + f.error">
+                    <div class="row" style="grid-template-columns: 1fr 2fr; padding: 10px 12px;">
+                        <span class="tabular" x-text="f.proxy_url"></span>
+                        <span class="muted" x-text="f.error || '测试失败'"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel bracketed">
+        <div class="panel-head">
+            <span><span class="num">#</span> 本地代理列表</span>
+            <button class="btn btn-ghost btn-sm" @click="refresh">刷新</button>
+        </div>
+        <div class="row-list">
+            <div class="row row-head row-proxies">
+                <span>编号</span>
+                <span>代理</span>
+                <span>状态</span>
+                <span>延迟</span>
+                <span>最后测试</span>
+                <span style="text-align: right;">操作</span>
+            </div>
+            <template x-for="p in proxies" :key="p.id">
+                <div class="row row-proxies">
+                    <span class="col-id" x-text="`#${String(p.id).padStart(3,'0')}`"></span>
+                    <span class="tabular" x-text="p.proxy_url"></span>
+                    <span>
+                        <span class="tag" :class="tagClass(p.status)" x-text="p.status"></span>
+                        <span x-show="p.fail_reason" class="muted" style="font-size: 0.7rem; display: block; margin-top: 4px;" x-text="p.fail_reason"></span>
+                    </span>
+                    <span class="tabular" x-text="p.latency_ms == null ? '—' : `${p.latency_ms} ms`"></span>
+                    <span class="muted tabular" style="font-size: 0.75rem;" x-text="p.last_tested_at ? window.fmtTime(p.last_tested_at) : '—'"></span>
+                    <span class="col-actions">
+                        <button class="btn btn-ghost btn-sm" @click="retest(p)" title="重新测试">
+                            <span class="glyph">↻</span>
+                            <span>重测</span>
+                        </button>
+                        <button class="btn btn-ghost btn-sm" x-show="p.status !== 'disabled'" @click="disable(p)" title="禁用">
+                            <span>禁用</span>
+                        </button>
+                        <button class="btn btn-ghost btn-sm" x-show="p.status === 'disabled'" @click="enable(p)" title="启用">
+                            <span>启用</span>
+                        </button>
+                        <button class="btn btn-ghost btn-sm" @click="remove(p)" title="删除" style="color: var(--crimson);">
+                            <span class="glyph">×</span>
+                        </button>
+                    </span>
+                </div>
+            </template>
+            <div class="empty" x-show="proxies.length === 0">
+                代理池为空<br>
+                <span style="font-size: 0.78rem; font-family: var(--mono); font-style: normal;">添加代理后，测试通过才会进入 active 池</span>
+            </div>
+        </div>
+    </section>
+</div>
+
+<script>
+function proxiesPage() {
+    return {
+        proxies: [],
+        lastFailed: [],
+        submitting: false,
+        form: {
+            proxy_url: '',
+            test_url: 'http://httpbin.org/ip',
+            timeout_seconds: 8,
+        },
+        async init() {
+            await this.refresh();
+        },
+        async refresh() {
+            this.proxies = await fetch('/api/proxies').then(r => r.json());
+        },
+        tagClass(status) {
+            if (status === 'active') return 'tag-success';
+            if (status === 'failed') return 'tag-fail';
+            if (status === 'disabled') return 'tag-cancel';
+            return 'tag-info';
+        },
+        async add() {
+            if (!this.form.proxy_url.trim()) {
+                showToast('请输入代理地址', 'warning');
+                return;
+            }
+            this.submitting = true;
+            this.lastFailed = [];
+            try {
+                const res = await fetch('/api/proxies', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(this.form),
+                });
+                const j = await res.json();
+                if (res.ok) {
+                    this.lastFailed = j.failed || [];
+                    showToast(j.msg || '代理池已更新', j.added?.length ? 'success' : 'warning');
+                    if (j.added?.length) this.form.proxy_url = '';
+                    await this.refresh();
+                } else {
+                    showToast(j.detail || '添加失败', 'danger');
+                }
+            } finally {
+                this.submitting = false;
+            }
+        },
+        async retest(p) {
+            const res = await fetch(`/api/proxies/${p.id}/test`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({proxy_url: p.proxy_url, test_url: this.form.test_url, timeout_seconds: this.form.timeout_seconds}),
+            });
+            const j = await res.json();
+            showToast(j.ok ? `测试通过：${j.latency_ms} ms` : (j.error || '测试失败'), j.ok ? 'success' : 'danger');
+            await this.refresh();
+        },
+        async enable(p) {
+            await fetch(`/api/proxies/${p.id}/enable`, {method: 'POST'});
+            await this.refresh();
+        },
+        async disable(p) {
+            await fetch(`/api/proxies/${p.id}/disable`, {method: 'POST'});
+            await this.refresh();
+        },
+        async remove(p) {
+            if (!confirm(`删除代理 ${p.proxy_url} ?`)) return;
+            const res = await fetch(`/api/proxies/${p.id}`, {method: 'DELETE'});
+            if (res.ok) {
+                showToast('已删除', 'success');
+                await this.refresh();
+            } else {
+                showToast('删除失败', 'danger');
+            }
+        },
+    };
+}
+</script>
+{% endblock %}

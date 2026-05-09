@@ -40,9 +40,15 @@ class NotificationConfig(BaseModel):
 class ProxyConfig(BaseModel):
     """代理池配置（仅管理员可修改）"""
     enabled: bool = Field(default=False)
+    source: str = Field(default="manual", pattern="^(manual|scdn|local)$", description="代理来源")
     proxies: str = Field(default="", description="代理列表，一行一个")
     strategy: str = Field(default="random", pattern="^(random|round_robin)$")
     failover: bool = Field(default=True, description="失败后是否允许后续任务切换代理")
+    scdn_url: str = Field(default="https://proxy.scdn.io/text.php", description="SCDN 代理池接口")
+    scdn_protocol: str = Field(default="http", pattern="^(http|https)$")
+    scdn_country: str = Field(default="", description="SCDN 国家/地区过滤，留空表示不限")
+    scdn_quantity: int = Field(default=50, ge=1, le=5000)
+    scdn_cache_seconds: int = Field(default=300, ge=0, le=86400)
 
 
 class AdminPasswordSet(BaseModel):

@@ -55,7 +55,7 @@ async def get_db() -> AsyncIterator[AsyncSession]:
 async def init_db() -> None:
     """创建所有表（首次启动时调用）"""
     # 触发模型注册
-    from webapp.models import account, task, settings  # noqa: F401
+    from webapp.models import account, proxy, task, settings  # noqa: F401
 
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

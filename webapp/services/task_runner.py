@@ -17,10 +17,12 @@ import time
 import traceback
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.executors.pool import ThreadPoolExecutor
 from loguru import logger
+import requests
 from sqlalchemy import select
 
 from api.answer import Tiku
@@ -32,6 +34,7 @@ from api.session_context import (
 )
 from webapp.db import SyncSessionLocal
 from webapp.models.account import ChaoxingAccount
+from webapp.models.proxy import ProxyEntry
 from webapp.models.task import StudyTask, TaskLog, TaskMode, TaskStatus
 from webapp.models.settings import AppSetting
 from webapp.services.cookies_provider import DBCookiesProvider
@@ -65,6 +68,7 @@ class TaskRunner:
     def __init__(self):
         self._scheduler: Optional[BackgroundScheduler] = None
         self._cancel_events: Dict[int, threading.Event] = {}
+        self._proxy_cache: Dict[str, tuple[float, List[str]]] = {}
         self._lock = threading.Lock()
 
     # ---------- 生命周期 ----------
@@ -539,13 +543,24 @@ class TaskRunner:
 
     def _load_proxy_config(self, db) -> Dict[str, Any]:
         """从 app_settings 加载代理池配置"""
+        config: Dict[str, Any] = {}
         setting = db.get(AppSetting, AppSetting.KEY_PROXY_CONFIG)
         if setting and setting.value:
             try:
-                return json.loads(setting.value)
+                config = json.loads(setting.value)
             except json.JSONDecodeError:
-                return {}
-        return {}
+                config = {}
+
+        # 本地代理池在任务开始时快照一次，避免任务执行中长时间占用 DB。
+        if (config.get("source") or "manual") == "local":
+            rows = db.execute(
+                select(ProxyEntry.proxy_url)
+                .where(ProxyEntry.status == "active")
+                .order_by(ProxyEntry.latency_ms.is_(None), ProxyEntry.latency_ms.asc(), ProxyEntry.id.asc())
+            ).all()
+            config["local_proxies"] = [row[0] for row in rows]
+
+        return config
 
     @staticmethod
     def _parse_proxy_lines(proxy_text: str) -> list[str]:
@@ -560,13 +575,132 @@ class TaskRunner:
     def _choose_proxy(self, proxy_config: Dict[str, Any], task_id: int) -> Optional[str]:
         if not proxy_config or not proxy_config.get("enabled"):
             return None
-        proxies = self._parse_proxy_lines(str(proxy_config.get("proxies") or ""))
+        proxies = self._get_proxy_candidates(proxy_config)
         if not proxies:
             return None
         strategy = proxy_config.get("strategy") or "random"
         if strategy == "round_robin":
             return proxies[task_id % len(proxies)]
         return random.choice(proxies)
+
+    def _get_proxy_candidates(self, proxy_config: Dict[str, Any]) -> List[str]:
+        source = proxy_config.get("source") or "manual"
+        if source == "local":
+            proxies = list(proxy_config.get("local_proxies") or [])
+            if proxies:
+                return proxies
+            logger.warning("本地代理池没有 active 代理，回退到手动代理列表")
+        if source == "scdn":
+            proxies = self._load_scdn_proxies(proxy_config)
+            if proxies:
+                return proxies
+            logger.warning("SCDN 代理池为空或拉取失败，回退到手动代理列表")
+        return self._parse_proxy_lines_with_scheme(
+            str(proxy_config.get("proxies") or ""),
+            default_scheme=str(proxy_config.get("scdn_protocol") or "http"),
+        )
+
+    def _load_scdn_proxies(self, proxy_config: Dict[str, Any]) -> List[str]:
+        url = self._build_scdn_url(proxy_config)
+        protocol = str(proxy_config.get("scdn_protocol") or "http").lower()
+        cache_seconds = _as_int(proxy_config.get("scdn_cache_seconds"), 300)
+        cache_key = f"{url}|{protocol}"
+
+        now = time.time()
+        with self._lock:
+            cached = self._proxy_cache.get(cache_key)
+            if cached and cache_seconds > 0 and now - cached[0] < cache_seconds:
+                return cached[1]
+
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+        except Exception as exc:
+            logger.warning("拉取 SCDN 代理池失败: {}", exc)
+            return []
+
+        proxies = self._parse_proxy_response(response.text, default_scheme=protocol)
+        with self._lock:
+            self._proxy_cache[cache_key] = (now, proxies)
+        return proxies
+
+    @staticmethod
+    def _build_scdn_url(proxy_config: Dict[str, Any]) -> str:
+        raw_url = str(proxy_config.get("scdn_url") or "https://proxy.scdn.io/text.php").strip()
+        if raw_url.endswith("/"):
+            raw_url = raw_url.rstrip("/") + "/text.php"
+
+        parsed = urlparse(raw_url)
+        query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+        query.setdefault("type", str(proxy_config.get("scdn_protocol") or "http"))
+
+        country = str(proxy_config.get("scdn_country") or "").strip()
+        if country:
+            query.setdefault("country", country)
+
+        quantity = _as_int(proxy_config.get("scdn_quantity"), 50)
+        if quantity > 0:
+            query.setdefault("quantity", str(quantity))
+
+        return urlunparse(parsed._replace(query=urlencode(query)))
+
+    @classmethod
+    def _parse_proxy_response(cls, text: str, *, default_scheme: str = "http") -> List[str]:
+        text = (text or "").strip()
+        if not text:
+            return []
+
+        if text[:1] in "[{":
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError:
+                data = None
+            if data is not None:
+                return cls._extract_proxies_from_json(data, default_scheme=default_scheme)
+
+        return cls._parse_proxy_lines_with_scheme(text, default_scheme=default_scheme)
+
+    @classmethod
+    def _extract_proxies_from_json(cls, data: Any, *, default_scheme: str) -> List[str]:
+        found: List[str] = []
+
+        def walk(value: Any) -> None:
+            if isinstance(value, str):
+                if ":" in value:
+                    found.extend(cls._parse_proxy_lines_with_scheme(value, default_scheme=default_scheme))
+                return
+            if isinstance(value, list):
+                for item in value:
+                    walk(item)
+                return
+            if isinstance(value, dict):
+                host = value.get("host") or value.get("ip") or value.get("address")
+                port = value.get("port")
+                scheme = value.get("type") or value.get("protocol") or default_scheme
+                if host and port:
+                    found.append(cls._normalize_proxy(f"{host}:{port}", str(scheme)))
+                for item in value.values():
+                    walk(item)
+
+        walk(data)
+        return list(dict.fromkeys(found))
+
+    @classmethod
+    def _parse_proxy_lines_with_scheme(cls, proxy_text: str, *, default_scheme: str = "http") -> List[str]:
+        return [
+            cls._normalize_proxy(proxy, default_scheme)
+            for proxy in cls._parse_proxy_lines(proxy_text)
+            if cls._normalize_proxy(proxy, default_scheme)
+        ]
+
+    @staticmethod
+    def _normalize_proxy(proxy: str, default_scheme: str = "http") -> str:
+        proxy = (proxy or "").strip()
+        if not proxy:
+            return ""
+        if "://" in proxy:
+            return proxy
+        return f"{default_scheme}://{proxy}"
 
     @staticmethod
     def _mask_proxy(proxy: str) -> str:

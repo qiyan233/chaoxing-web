@@ -199,18 +199,55 @@
                     </select>
                 </div>
                 <div class="field col-4">
+                    <label class="field-label">代理来源</label>
+                    <select class="select" x-model="proxy.source">
+                        <option value="manual">手动列表</option>
+                        <option value="scdn">SCDN 代理池</option>
+                        <option value="local">本地代理池</option>
+                    </select>
+                </div>
+                <div class="field col-4">
                     <label class="field-label">失败切换</label>
                     <select class="select" x-model="proxy.failover">
                         <option :value="true">允许后续任务切换</option>
                         <option :value="false">固定当前选择</option>
                     </select>
                 </div>
+                <div class="field col-4" x-show="proxy.source === 'scdn'">
+                    <label class="field-label">SCDN 接口地址</label>
+                    <input class="input" x-model="proxy.scdn_url" placeholder="https://proxy.scdn.io/text.php">
+                </div>
+                <div class="field col-4" x-show="proxy.source === 'scdn'">
+                    <label class="field-label">SCDN 协议</label>
+                    <select class="select" x-model="proxy.scdn_protocol">
+                        <option value="http">HTTP</option>
+                        <option value="https">HTTPS</option>
+                    </select>
+                </div>
+                <div class="field col-4" x-show="proxy.source === 'scdn'">
+                    <label class="field-label">拉取数量</label>
+                    <input type="number" min="1" max="5000" class="input" x-model.number="proxy.scdn_quantity">
+                </div>
+                <div class="field col-4" x-show="proxy.source === 'scdn'">
+                    <label class="field-label">国家/地区</label>
+                    <input class="input" x-model="proxy.scdn_country" placeholder="留空不限，例如 CN/US">
+                </div>
+                <div class="field col-4" x-show="proxy.source === 'scdn'">
+                    <label class="field-label">缓存秒数</label>
+                    <input type="number" min="0" max="86400" class="input" x-model.number="proxy.scdn_cache_seconds">
+                </div>
                 <div class="field col-12">
-                    <label class="field-label">代理列表 <span class="muted">一行一个 · 支持 http/https</span></label>
+                    <label class="field-label">
+                        手动代理列表
+                        <span class="muted" x-show="proxy.source === 'manual'">一行一个 · 支持 http/https</span>
+                        <span class="muted" x-show="proxy.source === 'scdn'">SCDN 拉取失败时作为备用</span>
+                        <span class="muted" x-show="proxy.source === 'local'">本地代理池为空时作为备用</span>
+                    </label>
                     <textarea class="input" rows="9" x-model="proxy.proxies"
                               placeholder="http://user:pass@host:port&#10;http://host:port&#10;https://host:port"></textarea>
                     <p class="muted" style="margin-top: 8px;">
-                        代理池仅对后续新启动的任务生效；当前运行中的任务不会被强制切换。带账号密码的代理日志会自动脱敏。
+                        SCDN 模式会从 proxy.scdn.io 拉取文本代理池；返回的 host:port 会按所选协议补成 http://host:port 或 https://host:port。
+                        配置仅对后续新启动的任务生效；当前运行中的任务不会被强制切换。带账号密码的代理日志会自动脱敏。
                     </p>
                 </div>
                 <div class="col-12" style="text-align: right; margin-top: 8px;">

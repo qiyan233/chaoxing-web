@@ -110,3 +110,13 @@ async def settings_page(request: Request):
     if request.session.get("role") != "admin" and request.session.get("user") != "admin":
         return RedirectResponse("/dashboard", status_code=302)
     return _template(request, "settings.html", page="settings")
+
+
+@router.get("/proxies", response_class=HTMLResponse)
+async def proxies_page(request: Request):
+    redirect = _require_html_login(request)
+    if redirect:
+        return redirect
+    if request.session.get("role") != "admin" and request.session.get("user") != "admin":
+        return RedirectResponse("/dashboard", status_code=302)
+    return _template(request, "proxies.html", page="proxies")
