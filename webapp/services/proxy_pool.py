@@ -77,13 +77,47 @@ def extract_proxies_from_json(data: Any, *, default_scheme: str) -> List[str]:
     return list(dict.fromkeys(found))
 
 
+def fetch_scdn_proxies(
+    *,
+    protocol: str = "http",
+    count: int = 10,
+    country_code: str = "",
+    timeout_seconds: float = 15.0,
+) -> List[str]:
+    """从 SCDN 官方 API 拉取代理列表。"""
+    protocol = (protocol or "http").lower()
+    params = {
+        "protocol": protocol,
+        "count": max(1, min(int(count or 1), 20)),
+    }
+    country_code = (country_code or "").strip().upper()
+    if country_code:
+        params["country_code"] = country_code
+
+    response = requests.get(
+        "https://proxy.scdn.io/api/get_proxy.php",
+        params=params,
+        timeout=timeout_seconds,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("code") != 200:
+        raise RuntimeError(payload.get("message") or "SCDN API 返回失败")
+
+    proxies = payload.get("data", {}).get("proxies") or []
+    if not isinstance(proxies, list):
+        return []
+    return [str(proxy).strip() for proxy in proxies if str(proxy).strip()]
+
+
 def test_proxy(
     proxy_url: str,
     *,
     test_url: str = "http://httpbin.org/ip",
     timeout_seconds: float = 8.0,
+    default_scheme: str = "http",
 ) -> dict:
-    proxy = normalize_proxy(proxy_url)
+    proxy = normalize_proxy(proxy_url, default_scheme=default_scheme)
     started = time.perf_counter()
     try:
         response = requests.get(

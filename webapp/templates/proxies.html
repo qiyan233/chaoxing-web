@@ -43,6 +43,46 @@
                 </div>
             </form>
 
+            <div class="terminal" style="margin-top: 18px; padding: 16px;">
+                <div class="form-grid">
+                    <div class="field col-12">
+                        <label class="field-label">SCDN 快捷导入 <span class="muted">默认推荐 HTTP；拉取后仍会逐个测试，通过才入库</span></label>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button type="button" class="btn btn-primary" @click="importScdn('http')" :disabled="scdnImporting">
+                                <span x-show="!scdnImporting">从 SCDN 添加 HTTP 代理</span>
+                                <span x-show="scdnImporting" class="spinner"></span>
+                                <span x-show="scdnImporting">导入中…</span>
+                            </button>
+                            <button type="button" class="btn btn-ghost" @click="advancedOpen = !advancedOpen">
+                                高级协议
+                            </button>
+                        </div>
+                    </div>
+                    <div class="field col-3">
+                        <label class="field-label">拉取数量 <span class="muted">1-20</span></label>
+                        <input type="number" min="1" max="20" class="input" x-model.number="scdn.count">
+                    </div>
+                    <div class="field col-3">
+                        <label class="field-label">国家代码 <span class="muted">可空</span></label>
+                        <input class="input" x-model="scdn.country_code" placeholder="CN / US">
+                    </div>
+                    <div class="field col-6">
+                        <label class="field-label">说明</label>
+                        <div class="muted" style="line-height: 1.7;">
+                            学习通场景优先使用 HTTP 代理。SOCKS4/SOCKS5 需要运行环境支持 PySocks，否则会在测试阶段被过滤。
+                        </div>
+                    </div>
+                    <div class="col-12" x-show="advancedOpen">
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button type="button" class="btn btn-ghost btn-sm" @click="importScdn('https')" :disabled="scdnImporting">添加 HTTPS</button>
+                            <button type="button" class="btn btn-ghost btn-sm" @click="importScdn('socks4')" :disabled="scdnImporting">添加 SOCKS4</button>
+                            <button type="button" class="btn btn-ghost btn-sm" @click="importScdn('socks5')" :disabled="scdnImporting">添加 SOCKS5</button>
+                            <button type="button" class="btn btn-ghost btn-sm" @click="importScdn('all')" :disabled="scdnImporting">添加任意代理</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div x-show="lastFailed.length" style="margin-top: 18px;">
                 <div class="muted" style="margin-bottom: 8px;">最近过滤的不可用代理</div>
                 <template x-for="f in lastFailed" :key="f.proxy_url + f.error">
@@ -110,10 +150,16 @@ function proxiesPage() {
         proxies: [],
         lastFailed: [],
         submitting: false,
+        scdnImporting: false,
+        advancedOpen: false,
         form: {
             proxy_url: '',
             test_url: 'http://httpbin.org/ip',
             timeout_seconds: 8,
+        },
+        scdn: {
+            count: 10,
+            country_code: '',
         },
         async init() {
             await this.refresh();
@@ -151,6 +197,33 @@ function proxiesPage() {
                 }
             } finally {
                 this.submitting = false;
+            }
+        },
+        async importScdn(protocol = 'http') {
+            this.scdnImporting = true;
+            this.lastFailed = [];
+            try {
+                const res = await fetch('/api/proxies/import/scdn', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        protocol,
+                        count: this.scdn.count,
+                        country_code: this.scdn.country_code,
+                        test_url: this.form.test_url,
+                        timeout_seconds: this.form.timeout_seconds,
+                    }),
+                });
+                const j = await res.json();
+                if (res.ok) {
+                    this.lastFailed = j.failed || [];
+                    showToast(j.msg || 'SCDN 导入完成', j.added?.length ? 'success' : 'warning');
+                    await this.refresh();
+                } else {
+                    showToast(j.detail || 'SCDN 导入失败', 'danger');
+                }
+            } finally {
+                this.scdnImporting = false;
             }
         },
         async retest(p) {

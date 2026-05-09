@@ -18,6 +18,14 @@ class ProxyAddRequest(BaseModel):
     timeout_seconds: float = Field(default=8.0, ge=1.0, le=30.0)
 
 
+class ScdnProxyImportRequest(BaseModel):
+    protocol: str = Field(default="http", pattern="^(http|https|socks4|socks5|all)$")
+    count: int = Field(default=10, ge=1, le=20)
+    country_code: str = Field(default="", max_length=2)
+    test_url: str = Field(default="http://httpbin.org/ip", max_length=512)
+    timeout_seconds: float = Field(default=8.0, ge=1.0, le=30.0)
+
+
 class ProxyTestResult(BaseModel):
     ok: bool
     proxy_url: str

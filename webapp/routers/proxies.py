@@ -14,12 +14,46 @@ from webapp.schemas.proxy import (
     ProxyAddRequest,
     ProxyAddResponse,
     ProxyResponse,
+    ScdnProxyImportRequest,
     ProxyTestRequest,
     ProxyTestResult,
 )
-from webapp.services.proxy_pool import normalize_proxy, parse_proxy_lines, test_proxy
+from webapp.services.proxy_pool import fetch_scdn_proxies, normalize_proxy, parse_proxy_lines, test_proxy
 
 router = APIRouter(prefix="/api/proxies", tags=["proxies"], dependencies=[Depends(require_admin)])
+
+
+async def _test_and_upsert(
+    *,
+    db: AsyncSession,
+    raw_proxy: str,
+    test_url: str,
+    timeout_seconds: float,
+    default_scheme: str = "http",
+) -> tuple[ProxyEntry | None, ProxyTestResult]:
+    result = await run_in_threadpool(
+        test_proxy,
+        raw_proxy,
+        test_url=test_url,
+        timeout_seconds=timeout_seconds,
+        default_scheme=default_scheme,
+    )
+    test_result = ProxyTestResult(**result)
+    if not test_result.ok:
+        return None, test_result
+
+    proxy_url = normalize_proxy(raw_proxy, default_scheme=default_scheme)
+    existing_result = await db.execute(select(ProxyEntry).where(ProxyEntry.proxy_url == proxy_url))
+    entry = existing_result.scalar_one_or_none()
+    if entry is None:
+        entry = ProxyEntry(proxy_url=proxy_url)
+        db.add(entry)
+
+    entry.status = "active"
+    entry.latency_ms = test_result.latency_ms
+    entry.last_tested_at = datetime.utcnow()
+    entry.fail_reason = None
+    return entry, test_result
 
 
 @router.get("", response_model=List[ProxyResponse])
@@ -52,28 +86,15 @@ async def add_proxy(
     failed: List[ProxyTestResult] = []
 
     for raw_proxy in raw_proxies:
-        result = await run_in_threadpool(
-            test_proxy,
-            raw_proxy,
+        entry, test_result = await _test_and_upsert(
+            db=db,
+            raw_proxy=raw_proxy,
             test_url=payload.test_url,
             timeout_seconds=payload.timeout_seconds,
         )
-        test_result = ProxyTestResult(**result)
-        if not test_result.ok:
+        if entry is None:
             failed.append(test_result)
             continue
-
-        proxy_url = normalize_proxy(raw_proxy)
-        existing_result = await db.execute(select(ProxyEntry).where(ProxyEntry.proxy_url == proxy_url))
-        entry = existing_result.scalar_one_or_none()
-        if entry is None:
-            entry = ProxyEntry(proxy_url=proxy_url)
-            db.add(entry)
-
-        entry.status = "active"
-        entry.latency_ms = test_result.latency_ms
-        entry.last_tested_at = datetime.utcnow()
-        entry.fail_reason = None
         added.append(entry)
 
     await db.commit()
@@ -83,6 +104,57 @@ async def add_proxy(
     return ProxyAddResponse(
         status=bool(added),
         msg=f"新增/更新 {len(added)} 个可用代理，过滤 {len(failed)} 个不可用代理",
+        added=[ProxyResponse.model_validate(entry) for entry in added],
+        failed=failed,
+    )
+
+
+@router.post("/import/scdn", response_model=ProxyAddResponse, status_code=status.HTTP_201_CREATED)
+async def import_scdn_proxies(
+    payload: ScdnProxyImportRequest,
+    db: AsyncSession = Depends(get_db_session),
+):
+    try:
+        raw_proxies = await run_in_threadpool(
+            fetch_scdn_proxies,
+            protocol=payload.protocol,
+            count=payload.count,
+            country_code=payload.country_code,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"SCDN 拉取失败: {exc}")
+
+    if not raw_proxies:
+        return ProxyAddResponse(status=False, msg="SCDN 未返回代理", added=[], failed=[])
+
+    # all 返回的 host:port 无法知道具体协议；按项目首选 HTTP 测试，失败即过滤。
+    default_scheme = "http" if payload.protocol == "all" else payload.protocol
+    added: List[ProxyEntry] = []
+    failed: List[ProxyTestResult] = []
+
+    for raw_proxy in raw_proxies:
+        entry, test_result = await _test_and_upsert(
+            db=db,
+            raw_proxy=raw_proxy,
+            test_url=payload.test_url,
+            timeout_seconds=payload.timeout_seconds,
+            default_scheme=default_scheme,
+        )
+        if entry is None:
+            failed.append(test_result)
+            continue
+        added.append(entry)
+
+    await db.commit()
+    for entry in added:
+        await db.refresh(entry)
+
+    return ProxyAddResponse(
+        status=bool(added),
+        msg=(
+            f"SCDN 返回 {len(raw_proxies)} 个代理，"
+            f"新增/更新 {len(added)} 个可用代理，过滤 {len(failed)} 个不可用代理"
+        ),
         added=[ProxyResponse.model_validate(entry) for entry in added],
         failed=failed,
     )

@@ -18,6 +18,7 @@ from webapp.config import COURSE_CACHE_SECONDS
 from webapp.models.account import ChaoxingAccount
 from webapp.services.cookies_provider import DBCookiesProvider
 from webapp.services.credential import decrypt_password
+from webapp.services.proxy_selector import proxy_selector
 
 
 _course_cache: Dict[int, Dict[str, Any]] = {}
@@ -37,6 +38,7 @@ class ChaoxingService:
         cx_account = Account(account.phone, plain_password)
         cookies_provider = DBCookiesProvider(account.id)
         holder = IsolatedSession(cookies_provider=cookies_provider)
+        proxy_selector.apply_to_session(holder.session, seed=account.id)
         # 题库为 None 时构造一个禁用的 Tiku 占位符
         chaoxing = Chaoxing(account=cx_account, tiku=cls._build_disabled_tiku())
         return chaoxing, holder

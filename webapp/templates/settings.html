@@ -251,7 +251,8 @@
                               placeholder="http://user:pass@host:port&#10;http://host:port&#10;https://host:port"></textarea>
                     <p class="muted" style="margin-top: 8px;">
                         SCDN 模式会从 proxy.scdn.io 拉取文本代理池；返回的 host:port 会按所选协议补成 http://host:port 或 https://host:port。
-                        配置仅对后续新启动的任务生效；当前运行中的任务不会被强制切换。带账号密码的代理日志会自动脱敏。
+                        开启代理池后，添加账号验证登录、重新登录、获取课程、任务执行都会使用代理。
+                        配置仅对后续新发起的请求生效；当前运行中的任务不会被强制切换。带账号密码的代理日志会自动脱敏。
                     </p>
                 </div>
                 <div class="col-12" style="text-align: right; margin-top: 8px;">
