@@ -147,7 +147,7 @@ class Chaoxing:
         if login_with_cookies:
             logger.info("Logging in with cookies")
             SessionManager.update_cookies()
-            logger.debug(f"Logged in with cookies: {SessionManager.get_instance()._session.cookies}")
+            logger.debug(f"Logged in with cookies: {SessionManager.get_session().cookies}")
             if not self._validate_cookie_session():
                 logger.warning("Cookie 登录校验失败，尝试使用账号密码重新登录")
                 if self.account and self.account.username and self.account.password:
@@ -156,7 +156,8 @@ class Chaoxing:
             logger.info("登录成功...")
             return {"status": True, "msg": "登录成功"}
 
-        _session = requests.Session()
+        _session = SessionManager.get_session()
+        _session.headers.update(gc.HEADERS)
         _url = "https://passport2.chaoxing.com/fanyalogin"
         _data = {
             "fid": "-1",
@@ -173,24 +174,20 @@ class Chaoxing:
         resp = _session.post(_url, headers=gc.HEADERS, data=_data)
         if resp and resp.json()["status"] == True:
             save_cookies(_session)
-            SessionManager.update_cookies()
             logger.info("登录成功...")
             return {"status": True, "msg": "登录成功"}
         else:
             return {"status": False, "msg": str(resp.json()["msg2"])}
 
     def _validate_cookie_session(self) -> bool:
-        session = SessionManager.get_instance()._session
+        session = SessionManager.get_session()
         if not session.cookies.get("_uid"):
             return False
 
-        test_session = requests.Session()
-        test_session.headers.update(gc.HEADERS)
-        test_session.cookies.update(session.cookies.get_dict())
-
         try:
-            resp = test_session.post(
+            resp = session.post(
                 "https://mooc2-ans.chaoxing.com/mooc2-ans/visit/courselistdata",
+                headers=gc.HEADERS,
                 data={"courseType": 1, "courseFolderId": 0, "query": "", "superstarClass": 0},
                 timeout=8,
             )

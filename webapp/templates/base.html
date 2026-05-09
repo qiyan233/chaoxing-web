@@ -9,7 +9,18 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;600;700&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="/static/css/custom.css?v=study-atelier-20260504">
+    <script>
+      (function initTheme() {
+        try {
+          const saved = localStorage.getItem('chaoxing-theme');
+          const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (saved === 'dark' || (!saved && prefersDark)) {
+            document.documentElement.classList.add('theme-dark');
+          }
+        } catch (_) {}
+      })();
+    </script>
+    <link rel="stylesheet" href="/static/css/custom.css?v=study-atelier-night-20260510">
 </head>
 <body>
 {% if authenticated %}
@@ -44,6 +55,10 @@
                     <span>配置</span>
                     <span class="nav-num">05</span>
                 </a>
+                <a class="nav-link {% if page == 'update' %}active{% endif %}" href="/update">
+                    <span>更新</span>
+                    <span class="nav-num">06</span>
+                </a>
             {% endif %}
         </nav>
 
@@ -57,6 +72,10 @@
                 <span class="foot-key">时间</span>
                 <span class="tabular" id="clock">—</span>
             </div>
+            <button class="btn btn-ghost btn-block btn-sm theme-toggle" type="button" onclick="toggleTheme(); return false;">
+                <span class="theme-icon">☾</span>
+                <span id="theme-label">夜晚模式</span>
+            </button>
             <button class="btn btn-ghost btn-block btn-sm" style="margin-top: 8px;" onclick="logout(); return false;">
                 <span class="glyph">↗</span>
                 <span>登出</span>
@@ -90,6 +109,24 @@
     update();
     setInterval(update, 1000);
   })();
+
+  function syncThemeToggle() {
+    const isDark = document.documentElement.classList.contains('theme-dark');
+    const label = document.getElementById('theme-label');
+    const icon = document.querySelector('.theme-icon');
+    if (label) label.textContent = isDark ? '白天模式' : '夜晚模式';
+    if (icon) icon.textContent = isDark ? '☀' : '☾';
+  }
+
+  function toggleTheme() {
+    const root = document.documentElement;
+    const nextDark = !root.classList.contains('theme-dark');
+    root.classList.toggle('theme-dark', nextDark);
+    try { localStorage.setItem('chaoxing-theme', nextDark ? 'dark' : 'light'); } catch (_) {}
+    syncThemeToggle();
+  }
+
+  syncThemeToggle();
 </script>
 {% block extra_scripts %}{% endblock %}
 </body>

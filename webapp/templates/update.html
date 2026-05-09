@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}更新 · {{ app_name }}{% endblock %}
+{% block content %}
+<div x-data="updatePage()" x-init="checkUpdate(false)">
+    <header class="page-head">
+        <div>
+            <div class="page-eyebrow">// update · 06</div>
+            <h1 class="page-title">更新 <span class="serif" style="color: var(--bone-mute);">— 在线同步 GitHub。</span></h1>
+            <p class="page-sub">检查远程新版本，在线拉取并重启服务。存在本地未提交改动时会拒绝更新，避免覆盖文件。</p>
+        </div>
+    </header>
+
+    <section class="panel bracketed">
+        <div class="panel-head"><span><span class="num">↻</span> 系统更新</span></div>
+        <div class="panel-body">
+            <div class="form-grid">
+                <div class="field col-6">
+                    <label class="field-label">当前版本</label>
+                    <div class="input tabular" style="min-height: 44px;" x-text="update.current_message || update.current_commit || '—'"></div>
+                </div>
+                <div class="field col-6">
+                    <label class="field-label">远程版本</label>
+                    <div class="input tabular" style="min-height: 44px;" x-text="update.remote_message || update.remote_commit || '—'"></div>
+                </div>
+                <div class="field col-3">
+                    <label class="field-label">分支</label>
+                    <div class="input tabular" style="min-height: 44px;" x-text="update.branch || '—'"></div>
+                </div>
+                <div class="field col-3">
+                    <label class="field-label">落后提交</label>
+                    <div class="input tabular" style="min-height: 44px;" x-text="update.behind ?? '—'"></div>
+                </div>
+                <div class="field col-3">
+                    <label class="field-label">本地改动</label>
+                    <div class="input" style="min-height: 44px;">
+                        <span class="tag" :class="update.dirty ? 'tag-fail' : 'tag-success'" x-text="update.dirty ? 'dirty' : 'clean'"></span>
+                    </div>
+                </div>
+                <div class="field col-3">
+                    <label class="field-label">状态</label>
+                    <div class="input" style="min-height: 44px;">
+                        <span class="tag" :class="update.has_update ? 'tag-warn' : 'tag-success'"
+                              x-text="update.has_update ? '发现更新' : '已是最新'"></span>
+                    </div>
+                </div>
+
+                <div class="col-12" x-show="update.error">
+                    <div class="terminal" style="padding: 14px; color: var(--red);" x-text="update.error"></div>
+                </div>
+
+                <div class="col-12" x-show="update.dirty_files && update.dirty_files.length">
+                    <label class="field-label">未提交改动 <span class="muted">存在改动时不会自动更新</span></label>
+                    <div class="terminal" style="padding: 14px; max-height: 180px; overflow: auto;">
+                        <template x-for="f in update.dirty_files" :key="f">
+                            <div x-text="f"></div>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="col-12" x-show="update.recent_commits && update.recent_commits.length">
+                    <label class="field-label">可更新提交</label>
+                    <div class="terminal" style="padding: 14px; max-height: 220px; overflow: auto;">
+                        <template x-for="c in update.recent_commits" :key="c">
+                            <div x-text="c"></div>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="col-12" x-show="updateOutput">
+                    <label class="field-label">更新输出</label>
+                    <pre class="terminal" style="padding: 14px; white-space: pre-wrap; max-height: 260px; overflow: auto;" x-text="updateOutput"></pre>
+                </div>
+
+                <div class="col-12" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; flex-wrap: wrap;">
+                    <button type="button" class="btn btn-ghost" @click="checkUpdate(true)" :disabled="updateChecking">
+                        <span x-show="!updateChecking">检查更新</span>
+                        <span x-show="updateChecking" class="spinner"></span>
+                    </button>
+                    <button type="button" class="btn btn-primary" @click="applyUpdate" :disabled="updateApplying || !update.has_update || update.dirty">
+                        <span x-show="!updateApplying">在线更新</span>
+                        <span x-show="updateApplying" class="spinner"></span>
+                        <span x-show="updateApplying">更新中…</span>
+                    </button>
+                    <button type="button" class="btn btn-ghost" @click="restartService">
+                        重启服务
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<script>
+function updatePage() {
+    return {
+        update: {},
+        updateOutput: '',
+        updateChecking: false,
+        updateApplying: false,
+        async checkUpdate(toast = true) {
+            if (this.updateChecking) return;
+            this.updateChecking = true;
+            try {
+                const res = await fetch('/api/update/status');
+                const j = await res.json();
+                this.update = j;
+                if (toast) {
+                    showToast(j.error || (j.has_update ? '发现新版本' : '当前已是最新版本'), j.error ? 'danger' : (j.has_update ? 'warning' : 'success'));
+                }
+            } finally {
+                this.updateChecking = false;
+            }
+        },
+        async applyUpdate() {
+            if (!confirm('确定在线更新？更新过程中请不要关闭服务。')) return;
+            this.updateApplying = true;
+            this.updateOutput = '';
+            try {
+                const res = await fetch('/api/update/apply', {method: 'POST'});
+                const j = await res.json();
+                this.updateOutput = [j.stdout, j.stderr].filter(Boolean).join('\n');
+                showToast(j.msg || (res.ok ? '更新完成' : '更新失败'), (res.ok && j.status) ? 'success' : 'danger');
+                await this.checkUpdate(false);
+            } finally {
+                this.updateApplying = false;
+            }
+        },
+        async restartService() {
+            if (!confirm('确定重启服务？页面会短暂断开，几秒后刷新即可。')) return;
+            const res = await fetch('/api/update/restart', {method: 'POST'});
+            const j = await res.json();
+            showToast(j.msg || '正在重启', res.ok ? 'success' : 'danger');
+            setTimeout(() => window.location.reload(), 5000);
+        },
+    };
+}
+</script>
+{% endblock %}
