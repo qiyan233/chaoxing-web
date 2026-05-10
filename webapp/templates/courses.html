@@ -53,11 +53,11 @@
         </div>
 
         <div class="course-grid stagger">
-            <template x-for="(c, idx) in filteredCourses()" :key="courseKey(c, idx)">
+            <template x-for="c in filteredCourses()" :key="c._uid">
                 <div class="course-card"
-                     :class="selected.includes(courseKey(c, idx)) ? 'selected' : ''"
-                     @click="toggle(courseKey(c, idx))">
-                    <div class="course-id" x-text="`№ ${courseKey(c, idx)}`"></div>
+                     :class="selected.includes(c._uid) ? 'selected' : ''"
+                     @click="toggle(c._uid)">
+                    <div class="course-id" x-text="`№ ${courseKey(c)}`"></div>
                     <div class="course-title" x-text="courseTitle(c)"></div>
                     <div class="course-teacher" x-text="courseTeacher(c) ? `by ${courseTeacher(c)}` : ''"></div>
                 </div>
@@ -198,7 +198,10 @@ function coursesPage(accountId) {
                     this.courses = [];
                 } else {
                     const j = await res.json();
-                    this.courses = j.courses;
+                    this.courses = (j.courses || []).map((c, idx) => ({
+                        ...c,
+                        _uid: this.courseUid(c, idx),
+                    }));
                 }
             } catch (e) {
                 this.error = String(e);
@@ -217,12 +220,18 @@ function coursesPage(accountId) {
             else this.selected.push(id);
         },
         toggleAll(checked) {
-            this.selected = checked ? this.courses.map((c, idx) => this.courseKey(c, idx)) : [];
+            this.selected = checked ? this.courses.map(c => c._uid) : [];
         },
         hasSelection() { return this.selected.length > 0; },
         openLaunch() { this.launching = true; },
-        courseKey(c, idx) {
-            return String(c.courseId || c.courseid || c.course_id || c.id || `idx-${idx}`);
+        courseUid(c, idx) {
+            const courseId = c.courseId || c.courseid || c.course_id || c.id || 'unknown-course';
+            const clazzId = c.clazzId || c.clazzid || c.classId || c.classid || 'unknown-class';
+            const cpi = c.cpi || c.CPI || 'unknown-cpi';
+            return `${courseId}:${clazzId}:${cpi}:${idx}`;
+        },
+        courseKey(c) {
+            return String(c.courseId || c.courseid || c.course_id || c.id || c._uid || '—');
         },
         courseTitle(c) {
             return c.title || c.courseName || c.coursename || c.name || '未命名课程';
@@ -235,7 +244,14 @@ function coursesPage(accountId) {
             try {
                 const payload = {
                     account_id: this.accountId,
-                    course_ids: this.selected.length === this.courses.length ? null : this.selected,
+                    course_ids: this.selected.length === this.courses.length
+                        ? null
+                        : [...new Set(
+                            this.courses
+                                .filter(c => this.selected.includes(c._uid))
+                                .map(c => this.courseKey(c))
+                                .filter(Boolean)
+                          )],
                     speed: this.launch.speed,
                     jobs: this.launch.jobs,
                     notopen_action: this.launch.notopen_action,
