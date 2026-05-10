@@ -22,6 +22,12 @@ from webapp.services.credential import encrypt_password
 router = APIRouter(prefix="/api/accounts", tags=["accounts"], dependencies=[Depends(require_login)])
 
 
+def _apply_login_result(account: ChaoxingAccount, result: dict) -> None:
+    nickname = (result.get("nickname") or "").strip()
+    if nickname:
+        account.nickname = nickname
+
+
 @router.get("", response_model=List[AccountResponse])
 async def list_accounts(db: AsyncSession = Depends(get_db_session)):
     result = await db.execute(select(ChaoxingAccount).order_by(ChaoxingAccount.id.asc()))
@@ -60,6 +66,7 @@ async def create_account(
     if payload.verify_login:
         result = await run_in_threadpool(ChaoxingService.verify_login, account)
         if result.get("status"):
+            _apply_login_result(account, result)
             account.status = "idle"
             account.last_login_at = datetime.utcnow()
             account.last_error = None
@@ -118,6 +125,7 @@ async def relogin(
 
     result = await run_in_threadpool(ChaoxingService.verify_login, account)
     if result.get("status"):
+        _apply_login_result(account, result)
         account.last_login_at = datetime.utcnow()
         account.status = "idle"
         account.last_error = None

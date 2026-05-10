@@ -9,6 +9,7 @@ from hashlib import md5
 from typing import Self, Optional, Literal
 
 import requests
+from bs4 import BeautifulSoup
 from loguru import logger
 from requests import RequestException
 from requests.adapters import HTTPAdapter
@@ -202,6 +203,135 @@ class Chaoxing:
             return False
 
         return True
+
+    def get_account_display_name(self) -> Optional[str]:
+        """Best-effort fetch of the logged-in user's display name.
+
+        Chaoxing has changed profile endpoints several times, so this method
+        tries a JSON endpoint first and then falls back to profile HTML pages.
+        It never raises to callers: failure to fetch a name should not block
+        login, course fetching, or task execution.
+        """
+        session = SessionManager.get_session()
+
+        def clean_name(value) -> Optional[str]:
+            if value is None:
+                return None
+            name = re.sub(r"\s+", " ", str(value)).strip()
+            if not name:
+                return None
+            lowered = name.lower()
+            invalid_exact = {
+                "null",
+                "none",
+                "undefined",
+                "false",
+                "true",
+                "学习通",
+                "超星学习通",
+                "登录",
+                "请登录",
+                "个人空间",
+                "我的空间",
+                "账号管理",
+            }
+            invalid_contains = ("登录", "验证码", "passport", "chaoxing.com", "<", ">")
+            if lowered in invalid_exact or name in invalid_exact:
+                return None
+            if any(piece in name for piece in invalid_contains):
+                return None
+            if self.account and name == str(self.account.username):
+                return None
+            return name[:64]
+
+        def find_name_in_json(value) -> Optional[str]:
+            if isinstance(value, dict):
+                preferred_keys = (
+                    "realname",
+                    "realName",
+                    "trueName",
+                    "name",
+                    "nickname",
+                    "nickName",
+                    "userName",
+                    "uname",
+                    "cnname",
+                )
+                for key in preferred_keys:
+                    found = clean_name(value.get(key))
+                    if found:
+                        return found
+                for item in value.values():
+                    found = find_name_in_json(item)
+                    if found:
+                        return found
+            elif isinstance(value, list):
+                for item in value:
+                    found = find_name_in_json(item)
+                    if found:
+                        return found
+            return None
+
+        def find_name_in_html(text: str) -> Optional[str]:
+            try:
+                soup = BeautifulSoup(text, "lxml")
+                selectors = (
+                    ".user-name",
+                    ".username",
+                    ".userName",
+                    ".name",
+                    ".realname",
+                    ".realName",
+                    "#userName",
+                    "#username",
+                    "[title][class*=name]",
+                )
+                for selector in selectors:
+                    for node in soup.select(selector):
+                        found = clean_name(node.get("title") or node.get_text(" ", strip=True))
+                        if found:
+                            return found
+            except Exception:
+                pass
+
+            patterns = (
+                r'"(?:realname|realName|trueName|nickname|nickName|userName|uname|name)"\s*:\s*"([^"]{1,64})"',
+                r"(?:realname|realName|trueName|nickname|nickName|userName|uname|name)\s*=\s*['\"]([^'\"]{1,64})['\"]",
+                r"姓名[：:]\s*([^<\n\r]{1,64})",
+            )
+            for pattern in patterns:
+                match = re.search(pattern, text)
+                if match:
+                    found = clean_name(match.group(1))
+                    if found:
+                        return found
+            return None
+
+        endpoints = (
+            ("https://sso.chaoxing.com/apis/login/userLogin4Uname.do", "json"),
+            ("https://i.chaoxing.com/base", "html"),
+            ("https://passport2.chaoxing.com/mooc/accountManage", "html"),
+        )
+        for url, kind in endpoints:
+            try:
+                resp = session.get(url, headers=gc.HEADERS, timeout=10, allow_redirects=True)
+            except RequestException as exc:
+                logger.debug("Fetch account display name failed for {}: {}", url, exc)
+                continue
+            if resp.status_code != 200:
+                continue
+            if kind == "json":
+                try:
+                    found = find_name_in_json(resp.json())
+                    if found:
+                        return found
+                except Exception:
+                    pass
+                continue
+            found = find_name_in_html(resp.text or "")
+            if found:
+                return found
+        return None
 
     def get_fid(self):
         _session = SessionManager.get_session()

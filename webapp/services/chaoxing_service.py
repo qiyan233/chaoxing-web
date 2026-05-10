@@ -51,6 +51,18 @@ class ChaoxingService:
         tiku.DISABLE = True
         return tiku
 
+    @staticmethod
+    def _attach_display_name(result: Dict[str, Any], chaoxing: Chaoxing) -> Dict[str, Any]:
+        """Login result helper: add nickname when Chaoxing profile exposes it."""
+        if not result.get("status"):
+            return result
+        display_name = chaoxing.get_account_display_name()
+        if display_name:
+            result = dict(result)
+            result["nickname"] = display_name
+        return result
+
+
     # ---------- 公共方法 ----------
     @classmethod
     def verify_login(cls, account: ChaoxingAccount) -> Dict[str, Any]:
@@ -63,11 +75,12 @@ class ChaoxingService:
                     result = chaoxing.login(login_with_cookies=True)
                     if result["status"]:
                         holder.save_cookies()
-                        return {"status": True, "msg": "Cookie 校验通过"}
+                        return cls._attach_display_name({"status": True, "msg": "Cookie 校验通过"}, chaoxing)
                 # 回退到密码登录
                 result = chaoxing.login(login_with_cookies=False)
                 if result["status"]:
                     holder.save_cookies()
+                    result = cls._attach_display_name(result, chaoxing)
                 return result
             except Exception as exc:
                 return {"status": False, "msg": f"登录异常: {exc}"}
