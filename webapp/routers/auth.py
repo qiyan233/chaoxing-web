@@ -4,6 +4,7 @@ import ctypes
 import os
 import platform
 import shutil
+import threading
 import time
 from datetime import datetime
 from typing import Any
@@ -29,6 +30,9 @@ from webapp.services.credential import (
 
 router = APIRouter(tags=["auth"])
 SERVER_STARTED_AT = time.time()
+_SYSTEM_SAMPLE_LOCK = threading.Lock()
+_LAST_CPU_SAMPLE: dict[str, float] | None = None
+_LAST_NET_SAMPLE: dict[str, float] | None = None
 
 
 @router.post("/api/setup")
@@ -162,6 +166,190 @@ def _memory_status() -> dict[str, Any]:
     return {"total": None, "used": None, "available": None, "percent": None}
 
 
+def _filetime_to_int(filetime) -> int:
+    return (int(filetime.dwHighDateTime) << 32) + int(filetime.dwLowDateTime)
+
+
+def _cpu_counters() -> dict[str, float] | None:
+    """读取累计 CPU tick，用连续两次差值计算实时利用率。"""
+    if platform.system().lower() == "windows":
+        class FileTime(ctypes.Structure):
+            _fields_ = [
+                ("dwLowDateTime", ctypes.c_ulong),
+                ("dwHighDateTime", ctypes.c_ulong),
+            ]
+
+        idle = FileTime()
+        kernel = FileTime()
+        user = FileTime()
+        if ctypes.windll.kernel32.GetSystemTimes(
+            ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)
+        ):
+            idle_ticks = _filetime_to_int(idle)
+            # Windows kernel time includes idle time.
+            total_ticks = _filetime_to_int(kernel) + _filetime_to_int(user)
+            return {"idle": float(idle_ticks), "total": float(total_ticks)}
+
+    try:
+        with open("/proc/stat", "r", encoding="utf-8") as fh:
+            parts = fh.readline().split()
+        if not parts or parts[0] != "cpu":
+            return None
+        values = [float(v) for v in parts[1:]]
+        idle = values[3] + (values[4] if len(values) > 4 else 0.0)
+        total = sum(values)
+        return {"idle": idle, "total": total}
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _cpu_status() -> dict[str, Any]:
+    sample = _cpu_counters()
+    now = time.time()
+    if sample is None:
+        return {"percent": None, "sample_interval": None}
+
+    sample["ts"] = now
+    with _SYSTEM_SAMPLE_LOCK:
+        global _LAST_CPU_SAMPLE
+        previous = _LAST_CPU_SAMPLE
+        _LAST_CPU_SAMPLE = sample
+
+    if not previous:
+        return {"percent": None, "sample_interval": None}
+
+    total_delta = sample["total"] - previous["total"]
+    idle_delta = sample["idle"] - previous["idle"]
+    interval = max(0.0, sample["ts"] - previous["ts"])
+    if total_delta <= 0:
+        return {"percent": None, "sample_interval": round(interval, 2)}
+
+    percent = max(0.0, min(100.0, (1.0 - idle_delta / total_delta) * 100.0))
+    return {"percent": round(percent, 1), "sample_interval": round(interval, 2)}
+
+
+def _network_counters_linux() -> dict[str, int] | None:
+    try:
+        rx_total = 0
+        tx_total = 0
+        with open("/proc/net/dev", "r", encoding="utf-8") as fh:
+            for line in fh.readlines()[2:]:
+                if ":" not in line:
+                    continue
+                iface, data = line.split(":", 1)
+                iface = iface.strip()
+                if iface == "lo":
+                    continue
+                values = data.split()
+                rx_total += int(values[0])
+                tx_total += int(values[8])
+        return {"rx_total": rx_total, "tx_total": tx_total}
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _network_counters_windows() -> dict[str, int] | None:
+    """通过 Windows IP Helper API 读取网卡累计字节数。"""
+    if platform.system().lower() != "windows":
+        return None
+
+    class MibIfRow(ctypes.Structure):
+        _fields_ = [
+            ("wszName", ctypes.c_wchar * 256),
+            ("dwIndex", ctypes.c_ulong),
+            ("dwType", ctypes.c_ulong),
+            ("dwMtu", ctypes.c_ulong),
+            ("dwSpeed", ctypes.c_ulong),
+            ("dwPhysAddrLen", ctypes.c_ulong),
+            ("bPhysAddr", ctypes.c_ubyte * 8),
+            ("dwAdminStatus", ctypes.c_ulong),
+            ("dwOperStatus", ctypes.c_ulong),
+            ("dwLastChange", ctypes.c_ulong),
+            ("dwInOctets", ctypes.c_ulong),
+            ("dwInUcastPkts", ctypes.c_ulong),
+            ("dwInNUcastPkts", ctypes.c_ulong),
+            ("dwInDiscards", ctypes.c_ulong),
+            ("dwInErrors", ctypes.c_ulong),
+            ("dwInUnknownProtos", ctypes.c_ulong),
+            ("dwOutOctets", ctypes.c_ulong),
+            ("dwOutUcastPkts", ctypes.c_ulong),
+            ("dwOutNUcastPkts", ctypes.c_ulong),
+            ("dwOutDiscards", ctypes.c_ulong),
+            ("dwOutErrors", ctypes.c_ulong),
+            ("dwOutQLen", ctypes.c_ulong),
+            ("dwDescrLen", ctypes.c_ulong),
+            ("bDescr", ctypes.c_ubyte * 256),
+        ]
+
+    try:
+        size = ctypes.c_ulong(0)
+        ctypes.windll.iphlpapi.GetIfTable(None, ctypes.byref(size), False)
+        if size.value <= ctypes.sizeof(ctypes.c_ulong):
+            return None
+        buffer = ctypes.create_string_buffer(size.value)
+        if ctypes.windll.iphlpapi.GetIfTable(buffer, ctypes.byref(size), False) != 0:
+            return None
+
+        count = ctypes.c_ulong.from_buffer_copy(buffer.raw[: ctypes.sizeof(ctypes.c_ulong)]).value
+        offset = ctypes.sizeof(ctypes.c_ulong)
+        row_size = ctypes.sizeof(MibIfRow)
+        rx_total = 0
+        tx_total = 0
+        for index in range(count):
+            row_offset = offset + index * row_size
+            if row_offset + row_size > len(buffer.raw):
+                break
+            row = MibIfRow.from_buffer_copy(buffer.raw[row_offset : row_offset + row_size])
+            # IF_TYPE_SOFTWARE_LOOPBACK = 24；MIB_IF_OPER_STATUS_OPERATIONAL = 5
+            if int(row.dwType) == 24 or int(row.dwOperStatus) != 5:
+                continue
+            rx_total += int(row.dwInOctets)
+            tx_total += int(row.dwOutOctets)
+        return {"rx_total": rx_total, "tx_total": tx_total}
+    except Exception:
+        return None
+
+
+def _network_counters() -> dict[str, int] | None:
+    return _network_counters_linux() or _network_counters_windows()
+
+
+def _network_status() -> dict[str, Any]:
+    counters = _network_counters()
+    now = time.time()
+    if counters is None:
+        return {
+            "rx_total": None,
+            "tx_total": None,
+            "rx_speed": None,
+            "tx_speed": None,
+            "sample_interval": None,
+        }
+
+    sample = {**counters, "ts": now}
+    with _SYSTEM_SAMPLE_LOCK:
+        global _LAST_NET_SAMPLE
+        previous = _LAST_NET_SAMPLE
+        _LAST_NET_SAMPLE = sample
+
+    rx_speed = tx_speed = None
+    interval = None
+    if previous:
+        interval = max(0.001, sample["ts"] - previous["ts"])
+        rx_delta = max(0, sample["rx_total"] - previous["rx_total"])
+        tx_delta = max(0, sample["tx_total"] - previous["tx_total"])
+        rx_speed = round(rx_delta / interval, 1)
+        tx_speed = round(tx_delta / interval, 1)
+
+    return {
+        "rx_total": sample["rx_total"],
+        "tx_total": sample["tx_total"],
+        "rx_speed": rx_speed,
+        "tx_speed": tx_speed,
+        "sample_interval": round(interval, 2) if interval else None,
+    }
+
+
 async def _count(db: AsyncSession, stmt) -> int:
     result = await db.execute(stmt)
     return int(result.scalar() or 0)
@@ -192,6 +380,7 @@ async def server_status(
             "load_avg": list(load_avg) if load_avg else None,
         },
         "resources": {
+            "cpu": _cpu_status(),
             "disk": {
                 "total": disk.total,
                 "used": disk.used,
@@ -200,6 +389,7 @@ async def server_status(
                 "path": str(DATA_DIR),
             },
             "memory": _memory_status(),
+            "network": _network_status(),
         },
         "business": {
             "users": await _count(db, select(func.count(PlatformUser.id))),

@@ -42,18 +42,79 @@
 
     <section class="panel bracketed" style="margin-bottom: 24px;">
         <header class="panel-head">
-            <span><span class="num">№ 02</span> 服务器状态</span>
+            <span><span class="num">№ 02</span> 实时服务器状态</span>
             <span class="tag tag-success" x-show="server.status === 'ok'">ONLINE</span>
             <span class="tag tag-fail" x-show="server.status !== 'ok'">CHECKING</span>
         </header>
         <div class="panel-body">
             <div class="form-grid">
+                <div class="field col-4">
+                    <label class="field-label">CPU 利用率</label>
+                    <div class="terminal" style="padding: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px;">
+                            <strong class="tabular" style="font-size: 1.8rem;" x-text="percentText(server.resources?.cpu?.percent)"></strong>
+                            <span class="muted" x-text="`${server.runtime?.cpu_count || 0} 核`"></span>
+                        </div>
+                        <div class="progress thick" style="margin-top: 12px;">
+                            <span class="progress-bar run" :style="`width: ${meterValue(server.resources?.cpu?.percent)}%`"></span>
+                        </div>
+                        <div class="muted tabular" style="margin-top: 8px; font-size: 0.72rem;" x-text="server.resources?.cpu?.sample_interval ? `采样 ${server.resources.cpu.sample_interval}s` : '等待下一次采样'"></div>
+                    </div>
+                </div>
+
+                <div class="field col-4">
+                    <label class="field-label">内存</label>
+                    <div class="terminal" style="padding: 16px;">
+                        <div style="display: flex; justify-content: space-between; gap: 12px;">
+                            <strong class="tabular" style="font-size: 1.8rem;" x-text="percentText(server.resources?.memory?.percent)"></strong>
+                            <span class="muted" x-text="server.resources?.memory?.used ? `${formatBytes(server.resources.memory.used)} / ${formatBytes(server.resources.memory.total)}` : '—'"></span>
+                        </div>
+                        <div class="progress thick" style="margin-top: 12px;">
+                            <span class="progress-bar run" :style="`width: ${meterValue(server.resources?.memory?.percent)}%`"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="field col-4">
+                    <label class="field-label">硬盘</label>
+                    <div class="terminal" style="padding: 16px;">
+                        <div style="display: flex; justify-content: space-between; gap: 12px;">
+                            <strong class="tabular" style="font-size: 1.8rem;" x-text="percentText(server.resources?.disk?.percent)"></strong>
+                            <span class="muted" x-text="server.resources?.disk?.used ? `${formatBytes(server.resources.disk.used)} / ${formatBytes(server.resources.disk.total)}` : '—'"></span>
+                        </div>
+                        <div class="progress thick" style="margin-top: 12px;">
+                            <span class="progress-bar warn" :style="`width: ${meterValue(server.resources?.disk?.percent)}%`"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="field col-6">
+                    <label class="field-label">下行带宽</label>
+                    <div class="terminal" style="padding: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px;">
+                            <strong class="tabular" style="font-size: 1.8rem;" x-text="formatSpeed(server.resources?.network?.rx_speed)"></strong>
+                            <span class="muted" x-text="server.resources?.network?.rx_total ? `累计 ${formatBytes(server.resources.network.rx_total)}` : '—'"></span>
+                        </div>
+                        <div class="muted" style="margin-top: 8px;">Download · 实时入口流量</div>
+                    </div>
+                </div>
+                <div class="field col-6">
+                    <label class="field-label">上行带宽</label>
+                    <div class="terminal" style="padding: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px;">
+                            <strong class="tabular" style="font-size: 1.8rem;" x-text="formatSpeed(server.resources?.network?.tx_speed)"></strong>
+                            <span class="muted" x-text="server.resources?.network?.tx_total ? `累计 ${formatBytes(server.resources.network.tx_total)}` : '—'"></span>
+                        </div>
+                        <div class="muted" style="margin-top: 8px;">Upload · 实时出口流量</div>
+                    </div>
+                </div>
+
                 <div class="field col-3">
                     <label class="field-label">运行时长</label>
                     <div class="input tabular" style="min-height: 44px;" x-text="formatUptime(server.uptime_seconds)"></div>
                 </div>
                 <div class="field col-3">
-                    <label class="field-label">服务器时间</label>
+                    <label class="field-label">最后刷新</label>
                     <div class="input tabular" style="min-height: 44px;" x-text="server.server_time || '—'"></div>
                 </div>
                 <div class="field col-3">
@@ -63,31 +124,6 @@
                 <div class="field col-3">
                     <label class="field-label">系统</label>
                     <div class="input tabular" style="min-height: 44px;" x-text="server.runtime ? `${server.runtime.system} ${server.runtime.release}` : '—'"></div>
-                </div>
-
-                <div class="field col-6">
-                    <label class="field-label">内存</label>
-                    <div class="terminal" style="padding: 14px;">
-                        <div style="display: flex; justify-content: space-between; gap: 12px;">
-                            <span x-text="server.resources?.memory?.percent != null ? `${server.resources.memory.percent}%` : '不可用'"></span>
-                            <span class="muted" x-text="server.resources?.memory?.used ? `${formatBytes(server.resources.memory.used)} / ${formatBytes(server.resources.memory.total)}` : '—'"></span>
-                        </div>
-                        <div class="progress thick" style="margin-top: 10px;">
-                            <span class="progress-bar run" :style="`width: ${server.resources?.memory?.percent || 0}%`"></span>
-                        </div>
-                    </div>
-                </div>
-                <div class="field col-6">
-                    <label class="field-label">数据盘</label>
-                    <div class="terminal" style="padding: 14px;">
-                        <div style="display: flex; justify-content: space-between; gap: 12px;">
-                            <span x-text="server.resources?.disk?.percent != null ? `${server.resources.disk.percent}%` : '不可用'"></span>
-                            <span class="muted" x-text="server.resources?.disk?.used ? `${formatBytes(server.resources.disk.used)} / ${formatBytes(server.resources.disk.total)}` : '—'"></span>
-                        </div>
-                        <div class="progress thick" style="margin-top: 10px;">
-                            <span class="progress-bar warn" :style="`width: ${server.resources?.disk?.percent || 0}%`"></span>
-                        </div>
-                    </div>
                 </div>
 
                 <div class="field col-3">
@@ -179,10 +215,10 @@ function dashboard() {
         accounts: [],
         recentTasks: [],
         stats: {accounts: 0, running: 0, completed: 0, failed: 0},
-        server: {status: 'checking', runtime: {}, resources: {memory: {}, disk: {}}, business: {}},
+        server: {status: 'checking', runtime: {}, resources: {cpu: {}, memory: {}, disk: {}, network: {}}, business: {}},
         async init() {
             await this.refresh();
-            setInterval(() => this.refresh(), 5000);
+            setInterval(() => this.refresh(), 2000);
         },
         async refresh() {
             try {
@@ -230,6 +266,18 @@ function dashboard() {
                 i += 1;
             }
             return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+        },
+        formatSpeed(value) {
+            if (value === null || value === undefined) return '采样中';
+            return `${this.formatBytes(value)}/s`;
+        },
+        percentText(value) {
+            if (value === null || value === undefined) return '采样中';
+            return `${Number(value).toFixed(1)}%`;
+        },
+        meterValue(value) {
+            if (value === null || value === undefined) return 0;
+            return Math.max(0, Math.min(100, Number(value)));
         },
         formatUptime(seconds) {
             if (!seconds && seconds !== 0) return '—';
