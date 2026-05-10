@@ -122,6 +122,46 @@ async def user_dashboard_page(request: Request):
     return _template(request, "user_dashboard.html", page="user_dashboard")
 
 
+@router.get("/user/accounts", response_class=HTMLResponse)
+async def user_accounts_page(request: Request):
+    redirect = _require_html_login(request)
+    if redirect:
+        return redirect
+    if request.session.get("role") != "user":
+        return RedirectResponse("/dashboard", status_code=302)
+    return _template(request, "user_accounts.html", page="user_accounts")
+
+
+@router.get("/user/accounts/{account_id}/courses", response_class=HTMLResponse)
+async def user_courses_page(request: Request, account_id: int):
+    redirect = _require_html_login(request)
+    if redirect:
+        return redirect
+    if request.session.get("role") != "user":
+        return RedirectResponse(f"/accounts/{account_id}/courses", status_code=302)
+    return _template(request, "courses.html", page="user_accounts", account_id=account_id, user_scope=True)
+
+
+@router.get("/user/tasks", response_class=HTMLResponse)
+async def user_tasks_page(request: Request):
+    redirect = _require_html_login(request)
+    if redirect:
+        return redirect
+    if request.session.get("role") != "user":
+        return RedirectResponse("/tasks", status_code=302)
+    return _template(request, "user_tasks.html", page="user_tasks")
+
+
+@router.get("/user/tasks/{task_id}", response_class=HTMLResponse)
+async def user_task_detail_page(request: Request, task_id: int):
+    redirect = _require_html_login(request)
+    if redirect:
+        return redirect
+    if request.session.get("role") != "user":
+        return RedirectResponse(f"/tasks/{task_id}", status_code=302)
+    return _template(request, "task_detail.html", page="user_tasks", task_id=task_id, user_scope=True)
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request):
     redirect = _require_admin_page(request)

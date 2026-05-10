@@ -2073,6 +2073,58 @@ html.theme-dark .landing-v2-flow li {
   font-weight: 750;
 }
 
+.user-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.user-insight-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 178px;
+  padding: 22px;
+  border: 1px solid var(--line-2);
+  border-radius: 28px;
+  background:
+    linear-gradient(145deg, rgba(255, 252, 243, 0.70), rgba(255, 252, 243, 0.36)),
+    radial-gradient(circle at 88% 16%, rgba(88, 215, 164, 0.12), transparent 35%);
+  box-shadow: var(--soft-shadow);
+}
+
+html.theme-dark .user-insight-card {
+  background:
+    linear-gradient(145deg, rgba(237, 245, 239, 0.07), rgba(237, 245, 239, 0.025)),
+    radial-gradient(circle at 88% 16%, rgba(88, 215, 164, 0.12), transparent 35%);
+}
+
+.user-insight-card.primary {
+  grid-column: span 2;
+  border-color: rgba(88, 215, 164, 0.34);
+}
+
+.user-insight-card strong {
+  display: block;
+  margin-top: 18px;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: clamp(2.55rem, 5vw, 4.8rem);
+  line-height: 0.9;
+  letter-spacing: -0.08em;
+}
+
+.user-insight-card p {
+  margin-top: 18px;
+  color: var(--muted);
+  font-weight: 800;
+  line-height: 1.75;
+}
+
+.user-insight-card.live strong { color: var(--spruce); }
+.user-insight-card.success strong { color: var(--spruce-2); }
+.user-insight-card.warn strong { color: var(--gold); }
+.user-insight-card.danger strong { color: var(--red); }
+
 .user-card-row {
   padding: 22px;
   border-bottom: 1px solid var(--line);
@@ -2269,6 +2321,12 @@ html.theme-dark .user-account-chip {
     align-items: flex-start;
     flex-direction: column;
   }
+  .user-insight-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .user-insight-card.primary {
+    grid-column: 1 / -1;
+  }
   .user-card-main,
   .user-bind-bar,
   .user-account-chip {
@@ -2277,5 +2335,14 @@ html.theme-dark .user-account-chip {
   }
   .user-card-actions {
     justify-content: flex-start;
+  }
+}
+
+@media (max-width: 560px) {
+  .user-insight-grid {
+    grid-template-columns: 1fr;
+  }
+  .user-insight-card.primary {
+    grid-column: auto;
   }
 }

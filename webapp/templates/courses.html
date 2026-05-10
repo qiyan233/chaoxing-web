@@ -6,7 +6,7 @@
     <header class="page-head">
         <div>
             <div class="page-eyebrow">
-                <a href="/accounts" style="color: inherit;">↰ roster</a>
+                <a href="{{ '/user/accounts' if (user_scope|default(false)) else '/accounts' }}" style="color: inherit;">↰ {{ '我的学习通账号' if (user_scope|default(false)) else 'roster' }}</a>
                 <span style="margin: 0 12px; color: var(--bone-faint);">/</span>
                 <span x-text="account.phone || '—'"></span>
             </div>
@@ -53,13 +53,13 @@
         </div>
 
         <div class="course-grid stagger">
-            <template x-for="c in filteredCourses()" :key="c.courseId">
+            <template x-for="(c, idx) in filteredCourses()" :key="courseKey(c, idx)">
                 <div class="course-card"
-                     :class="selected.includes(c.courseId) ? 'selected' : ''"
-                     @click="toggle(c.courseId)">
-                    <div class="course-id" x-text="`№ ${c.courseId}`"></div>
-                    <div class="course-title" x-text="c.title"></div>
-                    <div class="course-teacher" x-text="c.teacher ? `by ${c.teacher}` : ''"></div>
+                     :class="selected.includes(courseKey(c, idx)) ? 'selected' : ''"
+                     @click="toggle(courseKey(c, idx))">
+                    <div class="course-id" x-text="`№ ${courseKey(c, idx)}`"></div>
+                    <div class="course-title" x-text="courseTitle(c)"></div>
+                    <div class="course-teacher" x-text="courseTeacher(c) ? `by ${courseTeacher(c)}` : ''"></div>
                 </div>
             </template>
         </div>
@@ -209,7 +209,7 @@ function coursesPage(accountId) {
         filteredCourses() {
             const f = this.filter.trim().toLowerCase();
             if (!f) return this.courses;
-            return this.courses.filter(c => (c.title || '').toLowerCase().includes(f));
+            return this.courses.filter(c => this.courseTitle(c).toLowerCase().includes(f));
         },
         toggle(id) {
             const i = this.selected.indexOf(id);
@@ -217,10 +217,19 @@ function coursesPage(accountId) {
             else this.selected.push(id);
         },
         toggleAll(checked) {
-            this.selected = checked ? this.courses.map(c => c.courseId) : [];
+            this.selected = checked ? this.courses.map((c, idx) => this.courseKey(c, idx)) : [];
         },
         hasSelection() { return this.selected.length > 0; },
         openLaunch() { this.launching = true; },
+        courseKey(c, idx) {
+            return String(c.courseId || c.courseid || c.course_id || c.id || `idx-${idx}`);
+        },
+        courseTitle(c) {
+            return c.title || c.courseName || c.coursename || c.name || '未命名课程';
+        },
+        courseTeacher(c) {
+            return c.teacher || c.teacherName || c.teachers || '';
+        },
         async submitLaunch() {
             this.submitting = true;
             try {
@@ -240,7 +249,7 @@ function coursesPage(accountId) {
                 const j = await res.json();
                 if (res.ok) {
                     showToast('operation dispatched', 'success');
-                    location.href = `/tasks/${j.id}`;
+                    location.href = `{{ '/user/tasks' if (user_scope|default(false)) else '/tasks' }}/${j.id}`;
                 } else {
                     showToast(j.detail || '启动失败', 'danger');
                 }

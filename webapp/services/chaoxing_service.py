@@ -112,15 +112,22 @@ class ChaoxingService:
             holder.save_cookies()
             courses = chaoxing.get_course_list()
 
+        def first_value(course: Dict[str, Any], *keys: str) -> Any:
+            for key in keys:
+                value = course.get(key)
+                if value not in (None, ""):
+                    return value
+            return None
+
         # 简化返回字段
         normalized = [
             {
-                "courseId": c.get("courseId"),
-                "clazzId": c.get("clazzId"),
-                "cpi": c.get("cpi"),
-                "title": c.get("title"),
-                "teacher": c.get("teacher", ""),
-                "desc": c.get("desc", ""),
+                "courseId": str(first_value(c, "courseId", "courseid", "course_id", "id") or ""),
+                "clazzId": str(first_value(c, "clazzId", "clazzid", "classId", "classid") or ""),
+                "cpi": str(first_value(c, "cpi", "CPI") or ""),
+                "title": str(first_value(c, "title", "courseName", "coursename", "name") or "未命名课程"),
+                "teacher": str(first_value(c, "teacher", "teacherName", "teachers") or ""),
+                "desc": str(first_value(c, "desc", "description", "school") or ""),
             }
             for c in courses
         ]

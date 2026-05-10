@@ -6,7 +6,7 @@
     <header class="page-head">
         <div>
             <div class="page-eyebrow">
-                <a href="/tasks" style="color: inherit;">↰ 操作</a>
+                <a href="{{ '/user/tasks' if (user_scope|default(false)) else '/tasks' }}" style="color: inherit;">↰ {{ '我的任务' if (user_scope|default(false)) else '操作' }}</a>
                 <span style="margin: 0 12px; color: var(--bone-faint);">/</span>
                 <span class="tabular" x-text="`#${String(task.id).padStart(3,'0')}`"></span>
             </div>

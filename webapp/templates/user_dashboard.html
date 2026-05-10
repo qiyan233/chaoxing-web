@@ -1,24 +1,155 @@
 {% extends "base.html" %}
 {% block title %}我的面板 · {{ app_name }}{% endblock %}
 {% block content %}
-<div>
+<div x-data="userDashboard()" x-init="init()">
     <header class="page-head">
         <div>
             <div class="page-eyebrow">// USER DASHBOARD · 01</div>
             <h1 class="page-title">我的学习面板 <span class="serif" style="color: var(--bone-mute);">— personal workspace.</span></h1>
-            <p class="page-sub">当前登录：{{ user }}。下一步会在这里接入“我的学习通账号、我的课程、我的任务”。</p>
+            <p class="page-sub">当前登录：{{ user }}。这里只展示你名下的学习通账号、课程任务和完成进度。</p>
+        </div>
+        <div class="page-actions">
+            <a class="btn btn-primary" href="/user/accounts">
+                <span class="glyph">+</span>
+                <span>添加学习通账号</span>
+            </a>
+            <a class="btn btn-ghost" href="/user/tasks">
+                <span class="glyph">→</span>
+                <span>查看我的任务</span>
+            </a>
         </div>
     </header>
 
-    <section class="panel bracketed">
-        <div class="panel-head">
-            <span><span class="num">#</span> 普通用户模式</span>
+    <section class="user-insight-grid">
+        <article class="user-insight-card primary">
+            <div class="stat-key">绑定学习通账号</div>
+            <strong class="tabular" x-text="accounts.length"></strong>
+            <p>已经归属到当前平台账号的学习通身份。</p>
+        </article>
+        <article class="user-insight-card">
+            <div class="stat-key">总任务</div>
+            <strong class="tabular" x-text="tasks.length"></strong>
+            <p>由你名下学习通账号创建的全部任务。</p>
+        </article>
+        <article class="user-insight-card live">
+            <div class="stat-key">运行中</div>
+            <strong class="tabular" x-text="runningCount()"></strong>
+            <p>正在排队或执行的任务。</p>
+        </article>
+        <article class="user-insight-card success">
+            <div class="stat-key">已完成</div>
+            <strong class="tabular" x-text="completedCount()"></strong>
+            <p>已经完成的刷课任务。</p>
+        </article>
+        <article class="user-insight-card warn">
+            <div class="stat-key">章节进度</div>
+            <strong class="tabular" x-text="`${doneChapters()}/${totalChapters()}`"></strong>
+            <p x-text="`完成率 ${completionRate()}%`"></p>
+        </article>
+        <article class="user-insight-card danger">
+            <div class="stat-key">异常任务</div>
+            <strong class="tabular" x-text="failedCount()"></strong>
+            <p>失败或取消的任务，需要重新检查。</p>
+        </article>
+    </section>
+
+    <section class="content-split" style="margin-top: 20px;">
+        <div class="panel bracketed">
+            <div class="panel-head">
+                <span><span class="num">01</span> 最近任务</span>
+                <a class="btn btn-ghost btn-sm" href="/user/tasks">全部任务</a>
+            </div>
+            <div class="row-list">
+                <div class="row row-head row-recent">
+                    <span>编号</span>
+                    <span>账号</span>
+                    <span>状态</span>
+                    <span>进度</span>
+                    <span></span>
+                </div>
+                <template x-for="t in recentTasks()" :key="t.id">
+                    <div class="row row-recent">
+                        <span class="col-id" x-text="`#${String(t.id).padStart(3,'0')}`"></span>
+                        <span x-text="phoneOf(t.account_id)"></span>
+                        <span><span class="tag" :class="tagClass(t.status)" x-text="t.status"></span></span>
+                        <span class="flex-col" style="gap: 4px;">
+                            <span class="progress-ascii" x-text="window.fmtAscii(t.done_chapters, t.total_chapters, 14)"></span>
+                            <span class="muted tabular" style="font-size: 0.7rem;" x-text="`${t.done_chapters}/${t.total_chapters}`"></span>
+                        </span>
+                        <span class="col-actions">
+                            <a class="btn btn-ghost btn-sm" :href="`/user/tasks/${t.id}`">打开</a>
+                        </span>
+                    </div>
+                </template>
+                <div class="empty" x-show="tasks.length === 0">暂无任务，先进入学习通账号选择课程并创建任务。</div>
+            </div>
         </div>
-        <div class="terminal" style="padding: 18px; line-height: 1.9;">
-            <div>✓ 你已进入普通用户面板。</div>
-            <div>✓ 普通用户不会看到代理池、系统配置、在线更新等管理员功能。</div>
-            <div>→ 下一步：添加“我的学习通账号”页面，并把账号/课程/任务按当前用户隔离。</div>
+
+        <div class="panel bracketed">
+            <div class="panel-head">
+                <span><span class="num">02</span> 我的学习通账号</span>
+                <a class="btn btn-ghost btn-sm" href="/user/accounts">管理账号</a>
+            </div>
+            <div class="row-list">
+                <template x-for="a in accounts" :key="a.id">
+                    <div class="row row-accstat">
+                        <span class="flex-col" style="gap: 2px;">
+                            <strong x-text="a.nickname || a.phone"></strong>
+                            <span class="muted" style="font-size: 0.7rem;" x-text="a.phone"></span>
+                        </span>
+                        <span><span class="tag" :class="acctTag(a.status)" x-text="a.status"></span></span>
+                    </div>
+                </template>
+                <div class="empty" x-show="accounts.length === 0">还没有学习通账号，点击上方按钮添加。</div>
+            </div>
         </div>
     </section>
 </div>
+
+<script>
+function userDashboard() {
+    return {
+        accounts: [],
+        tasks: [],
+        async init() {
+            await this.refresh();
+            setInterval(() => this.refresh(), 5000);
+        },
+        async refresh() {
+            const [accounts, tasks] = await Promise.all([
+                fetch('/api/accounts').then(r => r.json()).catch(() => []),
+                fetch('/api/tasks?limit=100').then(r => r.json()).catch(() => []),
+            ]);
+            this.accounts = Array.isArray(accounts) ? accounts : [];
+            this.tasks = Array.isArray(tasks) ? tasks : [];
+        },
+        recentTasks() { return this.tasks.slice(0, 8); },
+        runningCount() { return this.tasks.filter(t => ['pending', 'running'].includes(t.status)).length; },
+        completedCount() { return this.tasks.filter(t => t.status === 'completed').length; },
+        failedCount() { return this.tasks.filter(t => ['failed', 'cancelled'].includes(t.status)).length; },
+        doneChapters() { return this.tasks.reduce((n, t) => n + (Number(t.done_chapters) || 0), 0); },
+        totalChapters() { return this.tasks.reduce((n, t) => n + (Number(t.total_chapters) || 0), 0); },
+        completionRate() {
+            const total = this.totalChapters();
+            return total ? Math.floor(this.doneChapters() / total * 100) : 0;
+        },
+        phoneOf(id) {
+            const a = this.accounts.find(x => x.id === id);
+            return a ? (a.nickname || a.phone) : `#${id}`;
+        },
+        tagClass(s) {
+            return ({
+                pending: 'tag-pending',
+                running: 'tag-running',
+                completed: 'tag-success',
+                failed: 'tag-fail',
+                cancelled: 'tag-cancel',
+            })[s] || 'tag-pending';
+        },
+        acctTag(s) {
+            return ({idle: 'tag-pending', running: 'tag-running', error: 'tag-fail'})[s] || 'tag-pending';
+        },
+    };
+}
+</script>
 {% endblock %}

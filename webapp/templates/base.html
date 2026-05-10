@@ -20,7 +20,7 @@
         } catch (_) {}
       })();
     </script>
-    <link rel="stylesheet" href="/static/css/custom.css?v=study-atelier-users-20260510">
+    <link rel="stylesheet" href="/static/css/custom.css?v=study-atelier-user-panel-20260510">
 </head>
 <body>
 {% if authenticated %}
@@ -68,11 +68,11 @@
                     <span>我的面板</span>
                     <span class="nav-num">01</span>
                 </a>
-                <a class="nav-link" href="/user/dashboard">
+                <a class="nav-link {% if page == 'user_accounts' %}active{% endif %}" href="/user/accounts">
                     <span>学习通账号</span>
                     <span class="nav-num">02</span>
                 </a>
-                <a class="nav-link" href="/user/dashboard">
+                <a class="nav-link {% if page == 'user_tasks' %}active{% endif %}" href="/user/tasks">
                     <span>我的任务</span>
                     <span class="nav-num">03</span>
                 </a>
