@@ -49,7 +49,7 @@ class SessionManager:
         self._session = requests.Session()
         self._session.mount("https://", HTTPAdapter(max_retries=10))
         self._session.mount("http://", HTTPAdapter(max_retries=10))
-        self._session.request = functools.partial(self._session.request, timeout=5)
+        self._session.request = functools.partial(self._session.request, timeout=15)
         # For debug purposes
         # self._session.verify=False
         self._session.headers.clear()
@@ -171,7 +171,7 @@ class Chaoxing:
             "independentId": 0,
         }
         logger.trace("正在尝试登录...")
-        resp = _session.post(_url, headers=gc.HEADERS, data=_data)
+        resp = _session.post(_url, headers=gc.HEADERS, data=_data, timeout=20)
         if resp and resp.json()["status"] == True:
             save_cookies(_session)
             logger.info("登录成功...")

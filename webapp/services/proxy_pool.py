@@ -12,6 +12,7 @@ from requests import RequestException
 
 GENERIC_PROXY_TEST_URL = "http://httpbin.org/ip"
 CHAOXING_PROXY_TEST_URL = "https://passport2.chaoxing.com/"
+CHAOXING_LOGIN_TEST_URL = "https://passport2.chaoxing.com/fanyalogin"
 
 
 def normalize_proxy(proxy: str, default_scheme: str = "http") -> str:
@@ -115,6 +116,16 @@ def fetch_scdn_proxies(
     return [str(proxy).strip() for proxy in proxies if str(proxy).strip()]
 
 
+def _chaoxing_status_error(status_code: int) -> str | None:
+    if status_code in {403, 429}:
+        return f"Chaoxing blocked/rate limited HTTP {status_code}"
+    if status_code >= 500:
+        return f"Chaoxing server error HTTP {status_code}"
+    if status_code not in {200, 301, 302, 303, 307, 308, 400, 401, 404}:
+        return f"Chaoxing unexpected HTTP {status_code}"
+    return None
+
+
 def test_proxy(
     proxy_url: str,
     *,
@@ -131,39 +142,62 @@ def test_proxy(
 
     started = time.perf_counter()
     try:
-        response = requests.get(
-            url,
-            proxies={"http": proxy, "https": proxy},
-            timeout=timeout_seconds,
-            allow_redirects=False,
-        )
-        latency_ms = int((time.perf_counter() - started) * 1000)
-
         if mode == "chaoxing":
-            if response.status_code in {403, 429}:
+            response = requests.get(
+                url,
+                proxies={"http": proxy, "https": proxy},
+                timeout=timeout_seconds,
+                allow_redirects=False,
+            )
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            error = _chaoxing_status_error(response.status_code)
+            if error:
                 return {
                     "ok": False,
                     "proxy_url": proxy,
                     "latency_ms": latency_ms,
                     "status_code": response.status_code,
-                    "error": f"学习通风控/限流 HTTP {response.status_code}",
+                    "error": error,
                 }
-            if response.status_code >= 500:
+
+            # Default Chaoxing test checks both the entry page and the real login endpoint.
+            # The POST uses empty credentials; it only verifies proxy reachability/timeout/reset.
+            if not test_url:
+                login_response = requests.post(
+                    CHAOXING_LOGIN_TEST_URL,
+                    proxies={"http": proxy, "https": proxy},
+                    timeout=timeout_seconds,
+                    allow_redirects=False,
+                    data={
+                        "fid": "-1",
+                        "uname": "",
+                        "password": "",
+                        "refer": "https%3A%2F%2Fi.chaoxing.com",
+                        "t": "true",
+                        "forbidotherlogin": "0",
+                        "validate": "",
+                        "doubleFactorLogin": "0",
+                        "independentId": "0",
+                    },
+                )
+                latency_ms = int((time.perf_counter() - started) * 1000)
+                error = _chaoxing_status_error(login_response.status_code)
+                if error:
+                    return {
+                        "ok": False,
+                        "proxy_url": proxy,
+                        "latency_ms": latency_ms,
+                        "status_code": login_response.status_code,
+                        "error": f"Login endpoint probe failed: {error}",
+                    }
                 return {
-                    "ok": False,
+                    "ok": True,
                     "proxy_url": proxy,
                     "latency_ms": latency_ms,
-                    "status_code": response.status_code,
-                    "error": f"学习通服务异常 HTTP {response.status_code}",
+                    "status_code": login_response.status_code,
+                    "origin": "chaoxing-login-reachable",
                 }
-            if response.status_code not in {200, 301, 302, 303, 307, 308, 404}:
-                return {
-                    "ok": False,
-                    "proxy_url": proxy,
-                    "latency_ms": latency_ms,
-                    "status_code": response.status_code,
-                    "error": f"学习通返回异常 HTTP {response.status_code}",
-                }
+
             return {
                 "ok": True,
                 "proxy_url": proxy,
@@ -172,13 +206,20 @@ def test_proxy(
                 "origin": "chaoxing-reachable",
             }
 
+        response = requests.get(
+            url,
+            proxies={"http": proxy, "https": proxy},
+            timeout=timeout_seconds,
+            allow_redirects=False,
+        )
+        latency_ms = int((time.perf_counter() - started) * 1000)
         if response.status_code != 200:
             return {
                 "ok": False,
                 "proxy_url": proxy,
                 "latency_ms": latency_ms,
                 "status_code": response.status_code,
-                "error": f"测试地址返回 HTTP {response.status_code}",
+                "error": f"Test URL returned HTTP {response.status_code}",
             }
 
         origin: Optional[str] = None
@@ -201,7 +242,7 @@ def test_proxy(
             "ok": False,
             "proxy_url": proxy,
             "latency_ms": latency_ms,
-            "error": f"学习通重定向过多: {exc}" if mode == "chaoxing" else f"重定向过多: {exc}",
+            "error": f"Chaoxing too many redirects: {exc}" if mode == "chaoxing" else f"Too many redirects: {exc}",
         }
     except requests.exceptions.Timeout as exc:
         latency_ms = int((time.perf_counter() - started) * 1000)
@@ -209,17 +250,17 @@ def test_proxy(
             "ok": False,
             "proxy_url": proxy,
             "latency_ms": latency_ms,
-            "error": f"学习通访问超时: {exc}" if mode == "chaoxing" else f"访问超时: {exc}",
+            "error": f"Chaoxing read timed out: {exc}" if mode == "chaoxing" else f"Read timed out: {exc}",
         }
     except RequestException as exc:
         latency_ms = int((time.perf_counter() - started) * 1000)
         msg = str(exc)
         if "Connection reset" in msg or "ConnectionResetError" in msg:
-            msg = "学习通连接被重置" if mode == "chaoxing" else "连接被重置"
+            msg = "Chaoxing connection reset" if mode == "chaoxing" else "Connection reset"
         elif "ProxyError" in msg:
-            msg = f"代理连接失败: {exc}"
+            msg = f"Proxy connection failed: {exc}"
         elif "SSLError" in msg:
-            msg = f"TLS/SSL 握手失败: {exc}"
+            msg = f"TLS/SSL handshake failed: {exc}"
         else:
             msg = f"{type(exc).__name__}: {exc}"
         return {

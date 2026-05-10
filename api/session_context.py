@@ -42,7 +42,7 @@ class IsolatedSession:
         self._session = requests.Session()
         self._session.mount("https://", HTTPAdapter(max_retries=10))
         self._session.mount("http://", HTTPAdapter(max_retries=10))
-        self._session.request = functools.partial(self._session.request, timeout=5)
+        self._session.request = functools.partial(self._session.request, timeout=15)
         self._session.headers.clear()
         self._session.headers.update(gc.HEADERS)
 
