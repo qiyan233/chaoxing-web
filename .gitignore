@@ -17,6 +17,8 @@ data/
 *.log
 cookies.txt
 config.ini
+cache.json
+cache*.json
 
 .pytest_cache/
 .mypy_cache/
