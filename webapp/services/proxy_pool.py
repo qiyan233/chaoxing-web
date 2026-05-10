@@ -7,6 +7,11 @@ import time
 from typing import Any, List, Optional
 
 import requests
+from requests import RequestException
+
+
+GENERIC_PROXY_TEST_URL = "http://httpbin.org/ip"
+CHAOXING_PROXY_TEST_URL = "https://passport2.chaoxing.com/"
 
 
 def normalize_proxy(proxy: str, default_scheme: str = "http") -> str:
@@ -113,19 +118,60 @@ def fetch_scdn_proxies(
 def test_proxy(
     proxy_url: str,
     *,
-    test_url: str = "http://httpbin.org/ip",
+    test_url: str = "",
+    test_mode: str = "chaoxing",
     timeout_seconds: float = 8.0,
     default_scheme: str = "http",
 ) -> dict:
     proxy = normalize_proxy(proxy_url, default_scheme=default_scheme)
+    mode = (test_mode or "chaoxing").lower()
+    url = (test_url or "").strip()
+    if not url:
+        url = CHAOXING_PROXY_TEST_URL if mode == "chaoxing" else GENERIC_PROXY_TEST_URL
+
     started = time.perf_counter()
     try:
         response = requests.get(
-            test_url,
+            url,
             proxies={"http": proxy, "https": proxy},
             timeout=timeout_seconds,
+            allow_redirects=False,
         )
         latency_ms = int((time.perf_counter() - started) * 1000)
+
+        if mode == "chaoxing":
+            if response.status_code in {403, 429}:
+                return {
+                    "ok": False,
+                    "proxy_url": proxy,
+                    "latency_ms": latency_ms,
+                    "status_code": response.status_code,
+                    "error": f"学习通风控/限流 HTTP {response.status_code}",
+                }
+            if response.status_code >= 500:
+                return {
+                    "ok": False,
+                    "proxy_url": proxy,
+                    "latency_ms": latency_ms,
+                    "status_code": response.status_code,
+                    "error": f"学习通服务异常 HTTP {response.status_code}",
+                }
+            if response.status_code not in {200, 301, 302, 303, 307, 308, 404}:
+                return {
+                    "ok": False,
+                    "proxy_url": proxy,
+                    "latency_ms": latency_ms,
+                    "status_code": response.status_code,
+                    "error": f"学习通返回异常 HTTP {response.status_code}",
+                }
+            return {
+                "ok": True,
+                "proxy_url": proxy,
+                "latency_ms": latency_ms,
+                "status_code": response.status_code,
+                "origin": "chaoxing-reachable",
+            }
+
         if response.status_code != 200:
             return {
                 "ok": False,
@@ -149,11 +195,36 @@ def test_proxy(
             "status_code": response.status_code,
             "origin": origin,
         }
-    except Exception as exc:
+    except requests.exceptions.TooManyRedirects as exc:
         latency_ms = int((time.perf_counter() - started) * 1000)
         return {
             "ok": False,
             "proxy_url": proxy,
             "latency_ms": latency_ms,
-            "error": f"{type(exc).__name__}: {exc}",
+            "error": f"学习通重定向过多: {exc}" if mode == "chaoxing" else f"重定向过多: {exc}",
+        }
+    except requests.exceptions.Timeout as exc:
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        return {
+            "ok": False,
+            "proxy_url": proxy,
+            "latency_ms": latency_ms,
+            "error": f"学习通访问超时: {exc}" if mode == "chaoxing" else f"访问超时: {exc}",
+        }
+    except RequestException as exc:
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        msg = str(exc)
+        if "Connection reset" in msg or "ConnectionResetError" in msg:
+            msg = "学习通连接被重置" if mode == "chaoxing" else "连接被重置"
+        elif "ProxyError" in msg:
+            msg = f"代理连接失败: {exc}"
+        elif "SSLError" in msg:
+            msg = f"TLS/SSL 握手失败: {exc}"
+        else:
+            msg = f"{type(exc).__name__}: {exc}"
+        return {
+            "ok": False,
+            "proxy_url": proxy,
+            "latency_ms": latency_ms,
+            "error": msg,
         }

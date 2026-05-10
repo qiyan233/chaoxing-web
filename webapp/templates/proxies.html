@@ -26,9 +26,17 @@
                     <textarea class="input" rows="5" x-model="form.proxy_url"
                               placeholder="1.2.3.4:8080&#10;http://user:pass@host:port&#10;https://host:port"></textarea>
                 </div>
+                <div class="field col-3">
+                    <label class="field-label">测试模式</label>
+                    <select class="select" x-model="form.test_mode">
+                        <option value="chaoxing">学习通检测</option>
+                        <option value="generic">通用检测</option>
+                    </select>
+                </div>
                 <div class="field col-6">
-                    <label class="field-label">测试地址</label>
-                    <input class="input" x-model="form.test_url" placeholder="http://httpbin.org/ip">
+                    <label class="field-label">测试地址 <span class="muted">可空</span></label>
+                    <input class="input" x-model="form.test_url"
+                           :placeholder="form.test_mode === 'chaoxing' ? '默认 https://passport2.chaoxing.com/' : '默认 http://httpbin.org/ip'">
                 </div>
                 <div class="field col-3">
                     <label class="field-label">超时秒数</label>
@@ -46,7 +54,7 @@
             <div class="terminal" style="margin-top: 18px; padding: 16px;">
                 <div class="form-grid">
                     <div class="field col-12">
-                        <label class="field-label">SCDN 快捷导入 <span class="muted">默认推荐 HTTP；拉取后仍会逐个测试，通过才入库</span></label>
+                        <label class="field-label">SCDN 快捷导入 <span class="muted">默认推荐 HTTP；拉取后会用当前测试模式逐个检测，通过才入库</span></label>
                         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                             <button type="button" class="btn btn-primary" @click="importScdn('http')" :disabled="scdnImporting">
                                 <span x-show="!scdnImporting">从 SCDN 添加 HTTP 代理</span>
@@ -69,7 +77,8 @@
                     <div class="field col-6">
                         <label class="field-label">说明</label>
                         <div class="muted" style="line-height: 1.7;">
-                            学习通场景优先使用 HTTP 代理。SOCKS4/SOCKS5 需要运行环境支持 PySocks，否则会在测试阶段被过滤。
+                            学习通场景优先使用 HTTP 代理。默认“学习通检测”会访问 passport2.chaoxing.com，能过滤掉被学习通重置、超时或风控的代理。
+                            SOCKS4/SOCKS5 需要运行环境支持 PySocks，否则会在测试阶段被过滤。
                         </div>
                     </div>
                     <div class="col-12" x-show="advancedOpen">
@@ -98,11 +107,20 @@
     <section class="panel bracketed">
         <div class="panel-head">
             <span><span class="num">#</span> 本地代理列表</span>
-            <button class="btn btn-ghost btn-sm" @click="refresh">刷新</button>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
+                <button class="btn btn-ghost btn-sm" @click="bulkTest" :disabled="bulkBusy || selectedIds.length === 0">测试选中</button>
+                <button class="btn btn-ghost btn-sm" @click="bulkDeleteSelected" :disabled="bulkBusy || selectedIds.length === 0" style="color: var(--crimson);">删除选中</button>
+                <button class="btn btn-ghost btn-sm" @click="bulkDeleteStatus('failed')" :disabled="bulkBusy">删除失败</button>
+                <button class="btn btn-ghost btn-sm" @click="bulkDeleteStatus('disabled')" :disabled="bulkBusy">删除禁用</button>
+                <button class="btn btn-ghost btn-sm" @click="refresh">刷新</button>
+            </div>
         </div>
         <div class="row-list">
             <div class="row row-head row-proxies">
-                <span>编号</span>
+                <span>
+                    <input type="checkbox" :checked="allSelected" @change="toggleAll($event.target.checked)">
+                    编号
+                </span>
                 <span>代理</span>
                 <span>状态</span>
                 <span>延迟</span>
@@ -111,7 +129,10 @@
             </div>
             <template x-for="p in proxies" :key="p.id">
                 <div class="row row-proxies">
-                    <span class="col-id" x-text="`#${String(p.id).padStart(3,'0')}`"></span>
+                    <span class="col-id" style="display: inline-flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" :value="p.id" :checked="selectedIds.includes(p.id)" @change="toggleOne(p.id, $event.target.checked)">
+                        <span x-text="`#${String(p.id).padStart(3,'0')}`"></span>
+                    </span>
                     <span class="tabular" x-text="p.proxy_url"></span>
                     <span>
                         <span class="tag" :class="tagClass(p.status)" x-text="p.status"></span>
@@ -149,12 +170,15 @@ function proxiesPage() {
     return {
         proxies: [],
         lastFailed: [],
+        selectedIds: [],
         submitting: false,
         scdnImporting: false,
+        bulkBusy: false,
         advancedOpen: false,
         form: {
             proxy_url: '',
-            test_url: 'http://httpbin.org/ip',
+            test_mode: 'chaoxing',
+            test_url: '',
             timeout_seconds: 8,
         },
         scdn: {
@@ -166,6 +190,20 @@ function proxiesPage() {
         },
         async refresh() {
             this.proxies = await fetch('/api/proxies').then(r => r.json());
+            this.selectedIds = this.selectedIds.filter(id => this.proxies.some(p => p.id === id));
+        },
+        get allSelected() {
+            return this.proxies.length > 0 && this.selectedIds.length === this.proxies.length;
+        },
+        toggleAll(checked) {
+            this.selectedIds = checked ? this.proxies.map(p => p.id) : [];
+        },
+        toggleOne(id, checked) {
+            if (checked) {
+                if (!this.selectedIds.includes(id)) this.selectedIds.push(id);
+            } else {
+                this.selectedIds = this.selectedIds.filter(x => x !== id);
+            }
         },
         tagClass(status) {
             if (status === 'active') return 'tag-success';
@@ -210,6 +248,7 @@ function proxiesPage() {
                         protocol,
                         count: this.scdn.count,
                         country_code: this.scdn.country_code,
+                        test_mode: this.form.test_mode,
                         test_url: this.form.test_url,
                         timeout_seconds: this.form.timeout_seconds,
                     }),
@@ -230,11 +269,73 @@ function proxiesPage() {
             const res = await fetch(`/api/proxies/${p.id}/test`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({proxy_url: p.proxy_url, test_url: this.form.test_url, timeout_seconds: this.form.timeout_seconds}),
+                body: JSON.stringify({
+                    proxy_url: p.proxy_url,
+                    test_mode: this.form.test_mode,
+                    test_url: this.form.test_url,
+                    timeout_seconds: this.form.timeout_seconds
+                }),
             });
             const j = await res.json();
             showToast(j.ok ? `测试通过：${j.latency_ms} ms` : (j.error || '测试失败'), j.ok ? 'success' : 'danger');
             await this.refresh();
+        },
+        async bulkTest() {
+            if (!this.selectedIds.length) return;
+            this.bulkBusy = true;
+            this.lastFailed = [];
+            try {
+                const res = await fetch('/api/proxies/bulk/test', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        ids: this.selectedIds,
+                        test_mode: this.form.test_mode,
+                        test_url: this.form.test_url,
+                        timeout_seconds: this.form.timeout_seconds,
+                    }),
+                });
+                const j = await res.json();
+                if (res.ok) {
+                    this.lastFailed = (j.results || []).filter(x => !x.ok);
+                    showToast(j.msg || '批量测试完成', j.failed ? 'warning' : 'success');
+                    await this.refresh();
+                } else {
+                    showToast(j.detail || '批量测试失败', 'danger');
+                }
+            } finally {
+                this.bulkBusy = false;
+            }
+        },
+        async bulkDeleteSelected() {
+            if (!this.selectedIds.length) return;
+            if (!confirm(`删除选中的 ${this.selectedIds.length} 个代理？`)) return;
+            await this.bulkDelete({ids: this.selectedIds});
+        },
+        async bulkDeleteStatus(status) {
+            const label = status === 'failed' ? '失败' : '禁用';
+            if (!confirm(`删除所有${label}代理？`)) return;
+            await this.bulkDelete({status});
+        },
+        async bulkDelete(payload) {
+            this.bulkBusy = true;
+            try {
+                const res = await fetch('/api/proxies/bulk/delete', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload),
+                });
+                const j = await res.json();
+                if (res.ok) {
+                    showToast(j.msg || '批量删除完成', 'success');
+                    this.selectedIds = [];
+                    await this.refresh();
+                } else {
+                    showToast(j.detail || '批量删除失败', 'danger');
+                }
+            } finally {
+                this.bulkBusy = false;
+            }
         },
         async enable(p) {
             await fetch(`/api/proxies/${p.id}/enable`, {method: 'POST'});

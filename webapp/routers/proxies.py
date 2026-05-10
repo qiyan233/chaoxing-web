@@ -13,6 +13,10 @@ from webapp.models.proxy import ProxyEntry
 from webapp.schemas.proxy import (
     ProxyAddRequest,
     ProxyAddResponse,
+    ProxyBulkActionRequest,
+    ProxyBulkDeleteResponse,
+    ProxyBulkTestRequest,
+    ProxyBulkTestResponse,
     ProxyResponse,
     ScdnProxyImportRequest,
     ProxyTestRequest,
@@ -27,6 +31,7 @@ async def _test_and_upsert(
     *,
     db: AsyncSession,
     raw_proxy: str,
+    test_mode: str,
     test_url: str,
     timeout_seconds: float,
     default_scheme: str = "http",
@@ -34,6 +39,7 @@ async def _test_and_upsert(
     result = await run_in_threadpool(
         test_proxy,
         raw_proxy,
+        test_mode=test_mode,
         test_url=test_url,
         timeout_seconds=timeout_seconds,
         default_scheme=default_scheme,
@@ -67,6 +73,7 @@ async def test_proxy_once(payload: ProxyTestRequest):
     result = await run_in_threadpool(
         test_proxy,
         payload.proxy_url,
+        test_mode=payload.test_mode,
         test_url=payload.test_url,
         timeout_seconds=payload.timeout_seconds,
     )
@@ -89,6 +96,7 @@ async def add_proxy(
         entry, test_result = await _test_and_upsert(
             db=db,
             raw_proxy=raw_proxy,
+            test_mode=payload.test_mode,
             test_url=payload.test_url,
             timeout_seconds=payload.timeout_seconds,
         )
@@ -136,6 +144,7 @@ async def import_scdn_proxies(
         entry, test_result = await _test_and_upsert(
             db=db,
             raw_proxy=raw_proxy,
+            test_mode=payload.test_mode,
             test_url=payload.test_url,
             timeout_seconds=payload.timeout_seconds,
             default_scheme=default_scheme,
@@ -160,6 +169,80 @@ async def import_scdn_proxies(
     )
 
 
+@router.post("/bulk/test", response_model=ProxyBulkTestResponse)
+async def bulk_test_proxies(
+    payload: ProxyBulkTestRequest,
+    db: AsyncSession = Depends(get_db_session),
+):
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail="请选择要测试的代理")
+
+    result = await db.execute(select(ProxyEntry).where(ProxyEntry.id.in_(payload.ids)))
+    entries = list(result.scalars().all())
+    if not entries:
+        raise HTTPException(status_code=404, detail="没有找到可测试的代理")
+
+    results: List[ProxyTestResult] = []
+    passed = 0
+    failed = 0
+    for entry in entries:
+        test_result_raw = await run_in_threadpool(
+            test_proxy,
+            entry.proxy_url,
+            test_mode=payload.test_mode,
+            test_url=payload.test_url,
+            timeout_seconds=payload.timeout_seconds,
+        )
+        test_result = ProxyTestResult(**test_result_raw)
+        results.append(test_result)
+
+        entry.last_tested_at = datetime.utcnow()
+        entry.latency_ms = test_result.latency_ms
+        if test_result.ok:
+            entry.status = "active"
+            entry.fail_reason = None
+            passed += 1
+        else:
+            entry.status = "failed"
+            entry.fail_reason = test_result.error
+            failed += 1
+
+    await db.commit()
+    return ProxyBulkTestResponse(
+        status=True,
+        msg=f"已测试 {len(entries)} 个代理，通过 {passed} 个，失败 {failed} 个",
+        tested=len(entries),
+        passed=passed,
+        failed=failed,
+        results=results,
+    )
+
+
+@router.post("/bulk/delete", response_model=ProxyBulkDeleteResponse)
+async def bulk_delete_proxies(
+    payload: ProxyBulkActionRequest,
+    db: AsyncSession = Depends(get_db_session),
+):
+    stmt = select(ProxyEntry)
+    if payload.ids:
+        stmt = stmt.where(ProxyEntry.id.in_(payload.ids))
+    elif payload.status:
+        stmt = stmt.where(ProxyEntry.status == payload.status)
+    else:
+        raise HTTPException(status_code=400, detail="请选择要删除的代理或状态")
+
+    result = await db.execute(stmt)
+    entries = list(result.scalars().all())
+    for entry in entries:
+        await db.delete(entry)
+    await db.commit()
+    return ProxyBulkDeleteResponse(
+        status=True,
+        msg=f"已删除 {len(entries)} 个代理",
+        deleted=len(entries),
+    )
+
+
 @router.post("/{proxy_id}/test", response_model=ProxyTestResult)
 async def retest_proxy(
     proxy_id: int,
@@ -170,11 +253,13 @@ async def retest_proxy(
     if entry is None:
         raise HTTPException(status_code=404, detail="代理不存在")
 
-    test_url = payload.test_url if payload else "http://httpbin.org/ip"
+    test_mode = payload.test_mode if payload else "chaoxing"
+    test_url = payload.test_url if payload else ""
     timeout_seconds = payload.timeout_seconds if payload else 8.0
     result = await run_in_threadpool(
         test_proxy,
         entry.proxy_url,
+        test_mode=test_mode,
         test_url=test_url,
         timeout_seconds=timeout_seconds,
     )
