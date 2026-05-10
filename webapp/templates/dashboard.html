@@ -40,6 +40,76 @@
         </div>
     </section>
 
+    <section class="panel bracketed" style="margin-bottom: 24px;">
+        <header class="panel-head">
+            <span><span class="num">№ 02</span> 服务器状态</span>
+            <span class="tag tag-success" x-show="server.status === 'ok'">ONLINE</span>
+            <span class="tag tag-fail" x-show="server.status !== 'ok'">CHECKING</span>
+        </header>
+        <div class="panel-body">
+            <div class="form-grid">
+                <div class="field col-3">
+                    <label class="field-label">运行时长</label>
+                    <div class="input tabular" style="min-height: 44px;" x-text="formatUptime(server.uptime_seconds)"></div>
+                </div>
+                <div class="field col-3">
+                    <label class="field-label">服务器时间</label>
+                    <div class="input tabular" style="min-height: 44px;" x-text="server.server_time || '—'"></div>
+                </div>
+                <div class="field col-3">
+                    <label class="field-label">Python / PID</label>
+                    <div class="input tabular" style="min-height: 44px;" x-text="server.runtime ? `${server.runtime.python} · ${server.runtime.pid}` : '—'"></div>
+                </div>
+                <div class="field col-3">
+                    <label class="field-label">系统</label>
+                    <div class="input tabular" style="min-height: 44px;" x-text="server.runtime ? `${server.runtime.system} ${server.runtime.release}` : '—'"></div>
+                </div>
+
+                <div class="field col-6">
+                    <label class="field-label">内存</label>
+                    <div class="terminal" style="padding: 14px;">
+                        <div style="display: flex; justify-content: space-between; gap: 12px;">
+                            <span x-text="server.resources?.memory?.percent != null ? `${server.resources.memory.percent}%` : '不可用'"></span>
+                            <span class="muted" x-text="server.resources?.memory?.used ? `${formatBytes(server.resources.memory.used)} / ${formatBytes(server.resources.memory.total)}` : '—'"></span>
+                        </div>
+                        <div class="progress thick" style="margin-top: 10px;">
+                            <span class="progress-bar run" :style="`width: ${server.resources?.memory?.percent || 0}%`"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="field col-6">
+                    <label class="field-label">数据盘</label>
+                    <div class="terminal" style="padding: 14px;">
+                        <div style="display: flex; justify-content: space-between; gap: 12px;">
+                            <span x-text="server.resources?.disk?.percent != null ? `${server.resources.disk.percent}%` : '不可用'"></span>
+                            <span class="muted" x-text="server.resources?.disk?.used ? `${formatBytes(server.resources.disk.used)} / ${formatBytes(server.resources.disk.total)}` : '—'"></span>
+                        </div>
+                        <div class="progress thick" style="margin-top: 10px;">
+                            <span class="progress-bar warn" :style="`width: ${server.resources?.disk?.percent || 0}%`"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="field col-3">
+                    <label class="field-label">平台用户</label>
+                    <div class="input tabular" style="min-height: 44px;" x-text="`${server.business?.active_users ?? 0}/${server.business?.users ?? 0}`"></div>
+                </div>
+                <div class="field col-3">
+                    <label class="field-label">学习通账号</label>
+                    <div class="input tabular" style="min-height: 44px;" x-text="server.business?.accounts ?? 0"></div>
+                </div>
+                <div class="field col-3">
+                    <label class="field-label">任务队列</label>
+                    <div class="input tabular" style="min-height: 44px;" x-text="`${server.business?.running_tasks ?? 0} 运行 / ${server.business?.pending_tasks ?? 0} 等待`"></div>
+                </div>
+                <div class="field col-3">
+                    <label class="field-label">代理池</label>
+                    <div class="input tabular" style="min-height: 44px;" x-text="`${server.business?.active_proxies ?? 0}/${server.business?.proxies ?? 0}`"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <div class="content-split">
 
         <section class="panel bracketed">
@@ -109,18 +179,21 @@ function dashboard() {
         accounts: [],
         recentTasks: [],
         stats: {accounts: 0, running: 0, completed: 0, failed: 0},
+        server: {status: 'checking', runtime: {}, resources: {memory: {}, disk: {}}, business: {}},
         async init() {
             await this.refresh();
             setInterval(() => this.refresh(), 5000);
         },
         async refresh() {
             try {
-                const [aRes, tRes] = await Promise.all([
+                const [aRes, tRes, sRes] = await Promise.all([
                     fetch('/api/accounts').then(r => r.json()),
                     fetch('/api/tasks?limit=10').then(r => r.json()),
+                    fetch('/api/admin/server-status').then(r => r.json()),
                 ]);
                 this.accounts = aRes;
                 this.recentTasks = tRes;
+                this.server = sRes;
                 this.stats.accounts = aRes.length;
                 this.stats.running = tRes.filter(t => t.status === 'running').length;
                 this.stats.completed = tRes.filter(t => t.status === 'completed').length;
@@ -146,6 +219,24 @@ function dashboard() {
                 running: 'tag-running',
                 error:   'tag-fail',
             })[s] || 'tag-pending';
+        },
+        formatBytes(value) {
+            if (!value) return '—';
+            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            let n = Number(value);
+            let i = 0;
+            while (n >= 1024 && i < units.length - 1) {
+                n /= 1024;
+                i += 1;
+            }
+            return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+        },
+        formatUptime(seconds) {
+            if (!seconds && seconds !== 0) return '—';
+            const d = Math.floor(seconds / 86400);
+            const h = Math.floor((seconds % 86400) / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            return d > 0 ? `${d}天 ${h}时 ${m}分` : `${h}时 ${m}分`;
         },
     };
 }
