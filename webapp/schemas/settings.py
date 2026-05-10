@@ -51,6 +51,16 @@ class ProxyConfig(BaseModel):
     scdn_cache_seconds: int = Field(default=300, ge=0, le=86400)
 
 
+class RuntimeConfig(BaseModel):
+    """任务运行时配置。"""
+    max_concurrent_accounts: int = Field(
+        default=1,
+        ge=1,
+        le=16,
+        description="最大同时刷课账号数；修改后需重启服务生效",
+    )
+
+
 class AdminPasswordSet(BaseModel):
     new_password: str = Field(..., min_length=4, max_length=128)
     old_password: Optional[str] = None

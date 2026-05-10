@@ -41,6 +41,23 @@ from webapp.services.study_flow import ChapterResult, process_chapter
 from webapp.services.quick_flow import quick_process_chapter
 
 
+def _load_max_concurrent_accounts() -> int:
+    """读取最大同时刷课账号数：数据库运行配置优先，其次环境变量默认值。"""
+    from webapp.config import MAX_CONCURRENT_ACCOUNTS
+
+    value = MAX_CONCURRENT_ACCOUNTS
+    try:
+        with SyncSessionLocal() as db:
+            setting = db.get(AppSetting, AppSetting.KEY_RUNTIME_CONFIG)
+            if setting and setting.value:
+                data = json.loads(setting.value)
+                value = _as_int(data.get("max_concurrent_accounts"), value)
+    except Exception as exc:
+        logger.warning("读取运行配置失败，使用默认并发数: {}", exc)
+
+    return max(1, min(16, value))
+
+
 def _as_float(value: Any, default: float = 0.0) -> float:
     try:
         if value is None or value == "":
@@ -73,14 +90,14 @@ class TaskRunner:
             return
         self._recover_orphaned_tasks()
         # ThreadPoolExecutor 大小决定同时跑几个账号
-        from webapp.config import MAX_CONCURRENT_ACCOUNTS
+        max_concurrent = _load_max_concurrent_accounts()
 
         self._scheduler = BackgroundScheduler(
-            executors={"default": ThreadPoolExecutor(max_workers=MAX_CONCURRENT_ACCOUNTS)},
+            executors={"default": ThreadPoolExecutor(max_workers=max_concurrent)},
             job_defaults={"misfire_grace_time": 60, "coalesce": False},
         )
         self._scheduler.start()
-        logger.info("TaskRunner 启动 (max_concurrent={})", MAX_CONCURRENT_ACCOUNTS)
+        logger.info("TaskRunner 启动 (max_concurrent={})", max_concurrent)
 
     def shutdown(self):
         if self._scheduler is None:

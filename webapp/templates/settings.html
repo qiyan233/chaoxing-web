@@ -7,7 +7,7 @@
         <div>
             <div class="page-eyebrow">// 配置 · 04</div>
             <h1 class="page-title">配置 <span class="serif" style="color: var(--bone-mute);">— 全局代理姿态。</span></h1>
-            <p class="page-sub">影响所有操作的开关：题库、推送通知、主密码。</p>
+            <p class="page-sub">影响所有操作的开关：题库、推送通知、代理池、运行并发、主密码。</p>
         </div>
     </header>
 
@@ -24,12 +24,16 @@
             <span class="tab-num">03</span>
             <span>代理池</span>
         </button>
-        <button class="tab" :class="active === 'pwd' ? 'active' : ''" @click="active = 'pwd'">
+        <button class="tab" :class="active === 'runtime' ? 'active' : ''" @click="active = 'runtime'">
             <span class="tab-num">04</span>
+            <span>运行</span>
+        </button>
+        <button class="tab" :class="active === 'pwd' ? 'active' : ''" @click="active = 'pwd'">
+            <span class="tab-num">05</span>
             <span>密码</span>
         </button>
         <button class="tab" :class="active === 'update' ? 'active' : ''" @click="active = 'update'; checkUpdate(false)">
-            <span class="tab-num">05</span>
+            <span class="tab-num">06</span>
             <span>更新</span>
         </button>
     </div>
@@ -265,9 +269,45 @@
         </div>
     </section>
 
+    <!-- RUNTIME -->
+    <section class="panel bracketed" x-show="active === 'runtime'" x-transition.opacity>
+        <div class="panel-head"><span><span class="num">04</span> 运行并发</span></div>
+        <div class="panel-body">
+            <form @submit.prevent="saveRuntime" class="form-grid">
+                <div class="field col-4">
+                    <label class="field-label">最大同时刷课账号数</label>
+                    <input type="number" class="input tabular" min="1" max="16" step="1"
+                           x-model.number="runtime.max_concurrent_accounts">
+                </div>
+                <div class="field col-8">
+                    <label class="field-label">生效说明</label>
+                    <div class="input" style="min-height: 44px; height: auto; line-height: 1.75;">
+                        控制后台最多同时跑几个学习通账号；同一学习通账号仍只能有一个进行中的任务。
+                        保存后需要重启服务，新并发数才会生效。
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="terminal" style="padding: 14px;">
+                        <div>建议值：普通 VPS 先用 <strong>1–2</strong>；代理池稳定、CPU/内存足够时再逐步提高。</div>
+                        <div class="muted" style="margin-top: 6px;">数值过大可能导致代理超时、学习通风控、视频处理线程互相抢占。</div>
+                    </div>
+                </div>
+                <div class="col-12" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; flex-wrap: wrap;">
+                    <button type="submit" class="btn btn-primary">
+                        <span class="glyph">✓</span>
+                        <span>保存运行配置</span>
+                    </button>
+                    <button type="button" class="btn btn-ghost" @click="restartService">
+                        重启服务
+                    </button>
+                </div>
+            </form>
+        </div>
+    </section>
+
     <!-- PWD -->
     <section class="panel bracketed" x-show="active === 'pwd'" x-transition.opacity>
-        <div class="panel-head"><span><span class="num">04</span> 轮换密码</span></div>
+        <div class="panel-head"><span><span class="num">05</span> 轮换密码</span></div>
         <div class="panel-body">
             <form @submit.prevent="changePassword" style="max-width: 460px; display: flex; flex-direction: column; gap: 16px;">
                 <div class="field">
@@ -294,7 +334,7 @@
 
     <!-- UPDATE -->
     <section class="panel bracketed" x-show="active === 'update'" x-transition.opacity>
-        <div class="panel-head"><span><span class="num">05</span> 系统更新</span></div>
+        <div class="panel-head"><span><span class="num">06</span> 系统更新</span></div>
         <div class="panel-body">
             <div class="form-grid">
                 <div class="field col-6">
@@ -380,6 +420,7 @@ function settingsPage() {
         tiku: {},
         notify: {},
         proxy: {},
+        runtime: {max_concurrent_accounts: 1},
         update: {},
         updateOutput: '',
         updateChecking: false,
@@ -389,6 +430,7 @@ function settingsPage() {
             this.tiku = await fetch('/api/settings/tiku').then(r => r.json());
             this.notify = await fetch('/api/settings/notification').then(r => r.json());
             this.proxy = await fetch('/api/settings/proxy').then(r => r.json());
+            this.runtime = await fetch('/api/settings/runtime').then(r => r.json());
             // cast string booleans
             ['submit', 'likeapi_search', 'likeapi_vision', 'likeapi_retry', 'check_llm_connection'].forEach(k => {
                 if (typeof this.tiku[k] === 'string') this.tiku[k] = this.tiku[k] === 'true';
@@ -420,6 +462,15 @@ function settingsPage() {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(this.proxy),
+            });
+            const j = await res.json();
+            showToast(j.msg || (res.ok ? 'saved' : 'failed'), res.ok ? 'success' : 'danger');
+        },
+        async saveRuntime() {
+            const res = await fetch('/api/settings/runtime', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(this.runtime),
             });
             const j = await res.json();
             showToast(j.msg || (res.ok ? 'saved' : 'failed'), res.ok ? 'success' : 'danger');
