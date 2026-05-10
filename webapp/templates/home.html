@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}学习通任务管理平台 · {{ app_name }}{% endblock %}
+{% block auth_content %}
+<main class="landing-v2">
+    <nav class="landing-v2-nav" aria-label="首页导航">
+        <a class="landing-v2-logo" href="/">
+            <span class="landing-v2-logo-dot"></span>
+            <span>Chaoxing Studio</span>
+        </a>
+        <a class="landing-v2-login" href="/login">用户登录</a>
+    </nav>
+
+    <section class="landing-v2-hero">
+        <div class="landing-v2-copy">
+            <div class="landing-v2-kicker">COURSE · ACCOUNT · TASK OPS</div>
+            <h1 class="landing-v2-title-desktop">
+                <span><b>学习通任务</b><b>管理，</b></span>
+                <span><b>从账号到</b><b>进度一站</b><b>托管。</b></span>
+            </h1>
+            <h1 class="landing-v2-title-mobile">
+                学习通账号托管<br>课程任务自动化
+            </h1>
+            <p>
+                面向需要统一运营学习通账号的团队，提供平台用户隔离、课程拉取、任务执行、
+                进度可视化和代理池管理能力。普通用户登录后，只管理自己的学习通账号与任务。
+            </p>
+            <div class="landing-v2-actions">
+                <a class="landing-v2-primary" href="/login">
+                    <span>进入用户登录</span>
+                    <span>↗</span>
+                </a>
+                <span class="landing-v2-note">平台账号由管理员统一开通</span>
+            </div>
+            <div class="landing-v2-proof">
+                <span>账号隔离</span>
+                <span>课程同步</span>
+                <span>任务进度</span>
+                <span>代理池支持</span>
+            </div>
+        </div>
+
+        <aside class="landing-v2-ops" aria-label="平台运营数据">
+            <div class="ops-card ops-card-main">
+                <span class="ops-label">平台账号数据</span>
+                <strong>{{ landing_stats.platform_total }}</strong>
+                <p>{{ landing_stats.platform_active }} 个账号可登录，管理员可统一开通、停用和重置密码。</p>
+            </div>
+            <div class="ops-card">
+                <span class="ops-label">绑定学习通账号数据</span>
+                <strong>{{ landing_stats.chaoxing_bound }}</strong>
+                <p>已绑定 / 总计 {{ landing_stats.chaoxing_total }} 个学习通账号，普通用户只看到自己的账号。</p>
+            </div>
+            <div class="ops-card">
+                <span class="ops-label">已完成刷课数据</span>
+                <strong>{{ landing_stats.completed_tasks }}</strong>
+                <p>累计完成任务，已完成章节 {{ landing_stats.completed_chapters }} 个。</p>
+            </div>
+            <div class="ops-flow">
+                <span>管理员开通平台账号</span>
+                <i></i>
+                <span>用户绑定学习通账号</span>
+                <i></i>
+                <span>同步课程并执行任务</span>
+            </div>
+        </aside>
+    </section>
+
+    <section class="landing-v2-features" aria-label="核心能力">
+        <article>
+            <span>01</span>
+            <h2>平台用户隔离</h2>
+            <p>管理员创建平台账号，普通用户只能看到自己的学习通账号、课程和任务，适合长期运营。</p>
+        </article>
+        <article>
+            <span>02</span>
+            <h2>课程自动同步</h2>
+            <p>添加学习通账号后自动验证登录并拉取课程列表，减少重复操作，快速进入任务配置。</p>
+        </article>
+        <article>
+            <span>03</span>
+            <h2>进度实时可视化</h2>
+            <p>任务状态、章节进度、失败原因和运行日志集中展示，方便用户查看，也方便管理员排查。</p>
+        </article>
+    </section>
+
+    <section class="landing-v2-flow" aria-label="使用流程">
+        <div>
+            <span class="landing-v2-kicker">GET STARTED</span>
+            <h2>五步开始使用</h2>
+            <p>平台账号由管理员开通，用户登录后即可添加自己的学习通账号并创建任务。</p>
+        </div>
+        <ol>
+            <li><span>管理员开通账号</span></li>
+            <li><span>用户登录平台</span></li>
+            <li><span>添加学习通账号</span></li>
+            <li><span>同步课程列表</span></li>
+            <li><span>创建并查看任务</span></li>
+        </ol>
+    </section>
+
+    <footer class="landing-v2-footer">
+        <div>
+            <strong>Chaoxing Studio</strong>
+            <span>学习通自动化任务管理平台</span>
+        </div>
+        <p>如需开通平台账号、调整权限或反馈问题，请联系平台管理员。</p>
+    </footer>
+</main>
+{% endblock %}

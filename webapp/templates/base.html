@@ -34,30 +34,47 @@
 
         <nav class="nav-section">
             <div class="nav-label">// 控制面板</div>
-            <a class="nav-link {% if page == 'dashboard' %}active{% endif %}" href="/dashboard">
-                <span>总览</span>
-                <span class="nav-num">01</span>
-            </a>
-            <a class="nav-link {% if page == 'accounts' %}active{% endif %}" href="/accounts">
-                <span>账号</span>
-                <span class="nav-num">02</span>
-            </a>
-            <a class="nav-link {% if page == 'tasks' %}active{% endif %}" href="/tasks">
-                <span>操作</span>
-                <span class="nav-num">03</span>
-            </a>
             {% if is_admin %}
+                <a class="nav-link {% if page == 'dashboard' %}active{% endif %}" href="/dashboard">
+                    <span>总览</span>
+                    <span class="nav-num">01</span>
+                </a>
+                <a class="nav-link {% if page == 'users' %}active{% endif %}" href="/users">
+                    <span>用户</span>
+                    <span class="nav-num">02</span>
+                </a>
+                <a class="nav-link {% if page == 'accounts' %}active{% endif %}" href="/accounts">
+                    <span>账号</span>
+                    <span class="nav-num">03</span>
+                </a>
+                <a class="nav-link {% if page == 'tasks' %}active{% endif %}" href="/tasks">
+                    <span>操作</span>
+                    <span class="nav-num">04</span>
+                </a>
                 <a class="nav-link {% if page == 'proxies' %}active{% endif %}" href="/proxies">
                     <span>代理池</span>
-                    <span class="nav-num">04</span>
+                    <span class="nav-num">05</span>
                 </a>
                 <a class="nav-link {% if page == 'settings' %}active{% endif %}" href="/settings">
                     <span>配置</span>
-                    <span class="nav-num">05</span>
+                    <span class="nav-num">06</span>
                 </a>
                 <a class="nav-link {% if page == 'update' %}active{% endif %}" href="/update">
                     <span>更新</span>
-                    <span class="nav-num">06</span>
+                    <span class="nav-num">07</span>
+                </a>
+            {% else %}
+                <a class="nav-link {% if page == 'user_dashboard' %}active{% endif %}" href="/user/dashboard">
+                    <span>我的面板</span>
+                    <span class="nav-num">01</span>
+                </a>
+                <a class="nav-link" href="/user/dashboard">
+                    <span>学习通账号</span>
+                    <span class="nav-num">02</span>
+                </a>
+                <a class="nav-link" href="/user/dashboard">
+                    <span>我的任务</span>
+                    <span class="nav-num">03</span>
                 </a>
             {% endif %}
         </nav>

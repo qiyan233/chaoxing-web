@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -28,15 +28,38 @@ def _apply_login_result(account: ChaoxingAccount, result: dict) -> None:
         account.nickname = nickname
 
 
+def _is_admin(request: Request) -> bool:
+    return request.session.get("role") == "admin" or request.session.get("user") == "admin"
+
+
+def _current_user_id(request: Request) -> int | None:
+    value = request.session.get("user_id")
+    return int(value) if value is not None else None
+
+
+def _ensure_account_access(request: Request, account: ChaoxingAccount) -> None:
+    if _is_admin(request):
+        return
+    if account.user_id != _current_user_id(request):
+        raise HTTPException(status_code=403, detail="无权访问该学习通账号")
+
+
 @router.get("", response_model=List[AccountResponse])
-async def list_accounts(db: AsyncSession = Depends(get_db_session)):
-    result = await db.execute(select(ChaoxingAccount).order_by(ChaoxingAccount.id.asc()))
+async def list_accounts(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+):
+    stmt = select(ChaoxingAccount).order_by(ChaoxingAccount.id.asc())
+    if not _is_admin(request):
+        stmt = stmt.where(ChaoxingAccount.user_id == _current_user_id(request))
+    result = await db.execute(stmt)
     return list(result.scalars().all())
 
 
 @router.post("", response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
 async def create_account(
     payload: AccountCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db_session),
 ):
     # 检查手机号唯一
@@ -47,6 +70,7 @@ async def create_account(
         raise HTTPException(status_code=400, detail="该手机号已存在")
 
     account = ChaoxingAccount(
+        user_id=None if _is_admin(request) else _current_user_id(request),
         phone=payload.phone,
         password_enc=encrypt_password(payload.password),
         nickname=payload.nickname,
@@ -83,11 +107,13 @@ async def create_account(
 async def update_account(
     account_id: int,
     payload: AccountUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db_session),
 ):
     account = await db.get(ChaoxingAccount, account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="账号不存在")
+    _ensure_account_access(request, account)
 
     if payload.password is not None:
         account.password_enc = encrypt_password(payload.password)
@@ -103,11 +129,13 @@ async def update_account(
 @router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_account(
     account_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db_session),
 ):
     account = await db.get(ChaoxingAccount, account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="账号不存在")
+    _ensure_account_access(request, account)
     await db.delete(account)
     await db.commit()
     return None
@@ -116,12 +144,14 @@ async def delete_account(
 @router.post("/{account_id}/login")
 async def relogin(
     account_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db_session),
 ):
     """重新测试登录"""
     account = await db.get(ChaoxingAccount, account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="账号不存在")
+    _ensure_account_access(request, account)
 
     result = await run_in_threadpool(ChaoxingService.verify_login, account)
     if result.get("status"):
@@ -139,6 +169,7 @@ async def relogin(
 @router.get("/{account_id}/courses")
 async def list_courses(
     account_id: int,
+    request: Request,
     refresh: bool = False,
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -146,6 +177,7 @@ async def list_courses(
     account = await db.get(ChaoxingAccount, account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="账号不存在")
+    _ensure_account_access(request, account)
 
     try:
         courses = await run_in_threadpool(

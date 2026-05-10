@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% block title %}用户 · {{ app_name }}{% endblock %}
+{% block content %}
+<div x-data="usersPage()" x-init="init()">
+
+    <header class="page-head">
+        <div>
+            <div class="page-eyebrow">// 平台账号 · USER OPS</div>
+            <h1 class="page-title">用户 <span class="serif" style="color: var(--bone-mute);">— 开通与绑定。</span></h1>
+            <p class="page-sub">管理员开通平台账号，并查看每个平台账号名下绑定的学习通账号。</p>
+        </div>
+    </header>
+
+    <section class="stat-grid stagger">
+        <div class="stat-cell">
+            <div class="stat-key">平台账号</div>
+            <div class="stat-value tabular" x-text="String(users.length).padStart(2,'0')"></div>
+            <div class="stat-foot">已开通用户</div>
+        </div>
+        <div class="stat-cell live">
+            <div class="stat-key">启用</div>
+            <div class="stat-value tabular" x-text="String(activeCount()).padStart(2,'0')"></div>
+            <div class="stat-foot">可登录账号</div>
+        </div>
+        <div class="stat-cell warn">
+            <div class="stat-key">绑定学习通</div>
+            <div class="stat-value tabular" x-text="String(boundCount()).padStart(2,'0')"></div>
+            <div class="stat-foot">归属到平台用户</div>
+        </div>
+        <div class="stat-cell err">
+            <div class="stat-key">未绑定</div>
+            <div class="stat-value tabular" x-text="String(unboundCount()).padStart(2,'0')"></div>
+            <div class="stat-foot">可分配账号</div>
+        </div>
+    </section>
+
+    <div class="content-split">
+        <section class="panel bracketed">
+            <header class="panel-head">
+                <span><span class="num">01</span> 开通平台账号</span>
+            </header>
+            <div class="panel-body">
+                <form class="form-grid" @submit.prevent="createUser">
+                    <div class="field col-6">
+                        <label class="field-label">用户名</label>
+                        <input class="input" x-model.trim="form.username" required minlength="3" maxlength="64" placeholder="student_001">
+                    </div>
+                    <div class="field col-6">
+                        <label class="field-label">初始密码</label>
+                        <input class="input" type="password" x-model="form.password" required minlength="4" maxlength="128" placeholder="至少 4 位">
+                    </div>
+                    <div class="field col-6">
+                        <label class="field-label">状态</label>
+                        <select class="select" x-model="form.status">
+                            <option value="active">启用</option>
+                            <option value="disabled">禁用</option>
+                        </select>
+                    </div>
+                    <div class="field col-6" style="align-self: end;">
+                        <button class="btn btn-primary btn-block" type="submit" :disabled="busy">
+                            <span x-show="!busy">开通账号</span>
+                            <span x-show="busy" class="spinner"></span>
+                            <span class="glyph">+</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <section class="panel bracketed">
+            <header class="panel-head">
+                <span><span class="num">02</span> 绑定说明</span>
+            </header>
+            <div class="panel-body">
+                <div class="terminal" style="padding: 16px; white-space: normal; line-height: 1.9;">
+                    <div>平台账号用于登录用户面板。</div>
+                    <div>学习通账号绑定后，普通用户只能看到自己名下的学习通账号与任务。</div>
+                    <div>未绑定学习通账号可在下方分配到指定平台账号。</div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <section class="panel bracketed" style="margin-top: 18px;">
+        <header class="panel-head">
+            <span><span class="num">03</span> 平台账号列表</span>
+            <button type="button" class="btn btn-ghost btn-sm" @click="refresh">
+                <span class="glyph">⟳</span>
+                <span>刷新</span>
+            </button>
+        </header>
+
+        <div class="row-list">
+            <template x-for="u in users" :key="u.id">
+                <article class="user-card-row">
+                    <div class="user-card-main">
+                        <div>
+                            <div class="mono muted" style="font-size: 0.72rem;" x-text="`USER #${String(u.id).padStart(3,'0')}`"></div>
+                            <h3 x-text="u.username"></h3>
+                            <div class="user-card-meta">
+                                <span class="tag" :class="u.status === 'active' ? 'tag-success' : 'tag-cancel'" x-text="u.status === 'active' ? '启用' : '禁用'"></span>
+                                <span x-text="`${u.account_count || 0} 个学习通账号`"></span>
+                            </div>
+                        </div>
+                        <div class="user-card-actions">
+                            <select class="select select-sm" x-model="u.status" @change="updateStatus(u)">
+                                <option value="active">启用</option>
+                                <option value="disabled">禁用</option>
+                            </select>
+                            <button type="button" class="btn btn-ghost btn-sm" @click="resetPassword(u)">重置密码</button>
+                            <button type="button" class="btn btn-ghost btn-sm" @click="deleteUser(u)">删除</button>
+                        </div>
+                    </div>
+
+                    <div class="user-bind-bar">
+                        <select class="select" x-model="bindSelection[u.id]">
+                            <option value="">选择学习通账号绑定到此用户</option>
+                            <template x-for="a in accounts" :key="a.id">
+                                <option :value="a.id" x-text="accountOptionLabel(a)"></option>
+                            </template>
+                        </select>
+                        <button type="button" class="btn btn-primary btn-sm" @click="bindAccount(u)" :disabled="!bindSelection[u.id]">绑定</button>
+                    </div>
+
+                    <div class="user-account-list">
+                        <template x-for="a in u.accounts" :key="a.id">
+                            <div class="user-account-chip">
+                                <div>
+                                    <strong x-text="a.nickname || a.phone"></strong>
+                                    <span x-text="a.phone"></span>
+                                </div>
+                                <span class="tag" :class="accountTag(a.status)" x-text="a.status"></span>
+                                <button type="button" class="btn btn-ghost btn-sm" @click="unbindAccount(u, a)">解绑</button>
+                            </div>
+                        </template>
+                        <div class="empty" x-show="!u.accounts || u.accounts.length === 0">这个平台账号暂未绑定学习通账号</div>
+                    </div>
+                </article>
+            </template>
+            <div class="empty" x-show="users.length === 0">暂无平台用户，先开通一个账号。</div>
+        </div>
+    </section>
+</div>
+
+<script>
+function usersPage() {
+    return {
+        users: [],
+        accounts: [],
+        bindSelection: {},
+        busy: false,
+        form: {username: '', password: '', status: 'active'},
+        async init() {
+            await this.refresh();
+        },
+        async refresh() {
+            const [u, a] = await Promise.all([
+                fetch('/api/users/overview').then(r => r.json()),
+                fetch('/api/users/account-options').then(r => r.json()),
+            ]);
+            this.users = Array.isArray(u) ? u : [];
+            this.accounts = Array.isArray(a) ? a : [];
+        },
+        activeCount() {
+            return this.users.filter(u => u.status === 'active').length;
+        },
+        boundCount() {
+            return this.accounts.filter(a => a.user_id).length;
+        },
+        unboundCount() {
+            return this.accounts.filter(a => !a.user_id).length;
+        },
+        accountOptionLabel(a) {
+            const owner = a.user_id ? ` · 已绑定 #${a.user_id}` : ' · 未绑定';
+            return `${a.nickname || a.phone} / ${a.phone}${owner}`;
+        },
+        accountTag(s) {
+            return ({idle: 'tag-pending', running: 'tag-running', error: 'tag-fail'})[s] || 'tag-pending';
+        },
+        async createUser() {
+            this.busy = true;
+            try {
+                const res = await fetch('/api/users', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(this.form),
+                });
+                const j = await res.json().catch(() => ({}));
+                showToast(j.detail || '平台账号已开通', res.ok ? 'success' : 'danger');
+                if (res.ok) {
+                    this.form = {username: '', password: '', status: 'active'};
+                    await this.refresh();
+                }
+            } finally {
+                this.busy = false;
+            }
+        },
+        async updateStatus(u) {
+            const res = await fetch(`/api/users/${u.id}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({status: u.status}),
+            });
+            const j = await res.json().catch(() => ({}));
+            showToast(j.detail || '状态已更新', res.ok ? 'success' : 'danger');
+            await this.refresh();
+        },
+        async resetPassword(u) {
+            const password = prompt(`输入 ${u.username} 的新密码（至少 4 位）`);
+            if (!password) return;
+            if (password.length < 4) {
+                showToast('密码至少 4 位', 'danger');
+                return;
+            }
+            const res = await fetch(`/api/users/${u.id}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({password}),
+            });
+            const j = await res.json().catch(() => ({}));
+            showToast(j.detail || '密码已重置', res.ok ? 'success' : 'danger');
+        },
+        async deleteUser(u) {
+            if (!confirm(`确定删除平台账号 ${u.username}？学习通账号不会删除，只会解除归属。`)) return;
+            const res = await fetch(`/api/users/${u.id}`, {method: 'DELETE'});
+            showToast(res.ok ? '用户已删除' : '删除失败', res.ok ? 'success' : 'danger');
+            await this.refresh();
+        },
+        async bindAccount(u) {
+            const accountId = this.bindSelection[u.id];
+            if (!accountId) return;
+            const res = await fetch(`/api/users/${u.id}/accounts/${accountId}`, {method: 'PUT'});
+            const j = await res.json().catch(() => ({}));
+            showToast(j.detail || j.msg || '绑定完成', res.ok ? 'success' : 'danger');
+            this.bindSelection[u.id] = '';
+            await this.refresh();
+        },
+        async unbindAccount(u, a) {
+            const res = await fetch(`/api/users/${u.id}/accounts/${a.id}`, {method: 'DELETE'});
+            const j = await res.json().catch(() => ({}));
+            showToast(j.detail || j.msg || '已解绑', res.ok ? 'success' : 'danger');
+            await this.refresh();
+        },
+    };
+}
+</script>
+{% endblock %}

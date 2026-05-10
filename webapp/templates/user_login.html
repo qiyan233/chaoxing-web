@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}用户登录 · {{ app_name }}{% endblock %}
+{% block auth_content %}
+<div class="auth-card">
+    <div class="auth-eyebrow">USER PORTAL</div>
+    <h1 class="auth-title">登录你的<br>学习面板。</h1>
+    <p class="auth-sub">
+        使用管理员创建的平台账号登录。登录后，你可以添加自己的学习通账号。
+    </p>
+
+    <form class="auth-form" x-data="{busy:false}" x-on:submit.prevent="
+        busy = true;
+        const fd = new FormData($event.target);
+        fetch('/api/user/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username: fd.get('username'), password: fd.get('password')})
+        }).then(r => r.json().then(j => ({ok: r.ok, j})))
+          .then(({ok, j}) => {
+              if (ok) location.href = '/user/dashboard';
+              else showToast(j.detail || '登录失败', 'danger');
+          })
+          .finally(() => busy = false);
+    ">
+        <div class="field">
+            <label class="field-label">用户名</label>
+            <input type="text" class="input" name="username" required autofocus placeholder="your_name">
+        </div>
+        <div class="field">
+            <label class="field-label">密码</label>
+            <input type="password" class="input" name="password" required placeholder="••••••••">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" :disabled="busy">
+            <span x-show="!busy">进入用户面板</span>
+            <span x-show="busy" class="spinner"></span>
+            <span class="glyph">↗</span>
+        </button>
+    </form>
+
+    <div class="auth-foot">
+        <a href="/" style="color: inherit;">返回首页</a>
+    </div>
+</div>
+{% endblock %}

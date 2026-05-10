@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}我的面板 · {{ app_name }}{% endblock %}
+{% block content %}
+<div>
+    <header class="page-head">
+        <div>
+            <div class="page-eyebrow">// USER DASHBOARD · 01</div>
+            <h1 class="page-title">我的学习面板 <span class="serif" style="color: var(--bone-mute);">— personal workspace.</span></h1>
+            <p class="page-sub">当前登录：{{ user }}。下一步会在这里接入“我的学习通账号、我的课程、我的任务”。</p>
+        </div>
+    </header>
+
+    <section class="panel bracketed">
+        <div class="panel-head">
+            <span><span class="num">#</span> 普通用户模式</span>
+        </div>
+        <div class="terminal" style="padding: 18px; line-height: 1.9;">
+            <div>✓ 你已进入普通用户面板。</div>
+            <div>✓ 普通用户不会看到代理池、系统配置、在线更新等管理员功能。</div>
+            <div>→ 下一步：添加“我的学习通账号”页面，并把账号/课程/任务按当前用户隔离。</div>
+        </div>
+    </section>
+</div>
+{% endblock %}

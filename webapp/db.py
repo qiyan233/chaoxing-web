@@ -55,11 +55,12 @@ async def get_db() -> AsyncIterator[AsyncSession]:
 async def init_db() -> None:
     """创建所有表（首次启动时调用）"""
     # 触发模型注册
-    from webapp.models import account, proxy, task, settings  # noqa: F401
+    from webapp.models import account, proxy, task, settings, user  # noqa: F401
 
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_run_lightweight_migrations)
+        await conn.run_sync(_ensure_default_admin_password)
 
 
 def _run_lightweight_migrations(sync_conn) -> None:
@@ -75,3 +76,52 @@ def _run_lightweight_migrations(sync_conn) -> None:
         sync_conn.exec_driver_sql(
             "ALTER TABLE study_tasks ADD COLUMN mode VARCHAR(16) NOT NULL DEFAULT 'normal'"
         )
+
+    account_cols = sync_conn.exec_driver_sql(
+        "PRAGMA table_info(chaoxing_accounts)"
+    ).fetchall()
+    account_existing = {row[1] for row in account_cols}
+    if "user_id" not in account_existing:
+        sync_conn.exec_driver_sql(
+            "ALTER TABLE chaoxing_accounts ADD COLUMN user_id INTEGER"
+        )
+        sync_conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_chaoxing_accounts_user_id ON chaoxing_accounts (user_id)"
+        )
+
+
+def _ensure_default_admin_password(sync_conn) -> None:
+    """初始化/迁移默认管理员密码。
+
+    仅执行一次：把当前库的管理员密码设置为 admin123，并写入迁移标记。
+    后续管理员在页面里修改密码后，启动服务不会再覆盖。
+    """
+    from webapp.models.settings import AppSetting
+    from webapp.services.credential import hash_admin_password
+
+    marker_key = "default_admin_password_20260510"
+    marker = sync_conn.exec_driver_sql(
+        "SELECT value FROM app_settings WHERE key = ?", (marker_key,)
+    ).fetchone()
+    if marker:
+        return
+
+    password_hash = hash_admin_password("admin123")
+    existing = sync_conn.exec_driver_sql(
+        "SELECT value FROM app_settings WHERE key = ?", (AppSetting.KEY_ADMIN_PASSWORD,)
+    ).fetchone()
+    if existing:
+        sync_conn.exec_driver_sql(
+            "UPDATE app_settings SET value = ? WHERE key = ?",
+            (password_hash, AppSetting.KEY_ADMIN_PASSWORD),
+        )
+    else:
+        sync_conn.exec_driver_sql(
+            "INSERT INTO app_settings (key, value) VALUES (?, ?)",
+            (AppSetting.KEY_ADMIN_PASSWORD, password_hash),
+        )
+
+    sync_conn.exec_driver_sql(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?)",
+        (marker_key, "done"),
+    )

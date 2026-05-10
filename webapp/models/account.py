@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, Integer, LargeBinary, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, LargeBinary, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from webapp.db import Base
@@ -15,6 +15,12 @@ class ChaoxingAccount(Base):
     __tablename__ = "chaoxing_accounts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("platform_users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     phone: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
     password_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     nickname: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)

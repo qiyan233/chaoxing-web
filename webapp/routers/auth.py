@@ -7,7 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from webapp.deps import get_db_session, is_admin_initialized, require_admin
 from webapp.models.settings import AppSetting
+from webapp.models.user import PlatformUser
 from webapp.schemas.settings import AdminPasswordSet, LoginRequest
+from webapp.schemas.user import PlatformLoginRequest
 from webapp.services.credential import (
     hash_admin_password,
     verify_admin_password,
@@ -61,6 +63,41 @@ async def login(
     request.session["user"] = "admin"
     request.session["role"] = "admin"
     return {"status": True, "msg": "登录成功"}
+
+
+@router.post("/api/admin/login")
+async def admin_login(
+    payload: LoginRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """???????????? /api/login ???????"""
+    return await login(payload, request, db)
+
+
+@router.post("/api/user/login")
+async def user_login(
+    payload: PlatformLoginRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """?????????"""
+    result = await db.execute(
+        select(PlatformUser).where(PlatformUser.username == payload.username.strip())
+    )
+    user = result.scalar_one_or_none()
+    if user is None or user.role != "user":
+        raise HTTPException(status_code=401, detail="????????")
+    if user.status != "active":
+        raise HTTPException(status_code=403, detail="??????")
+    if not verify_admin_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="????????")
+
+    request.session["authenticated"] = True
+    request.session["user"] = user.username
+    request.session["user_id"] = user.id
+    request.session["role"] = "user"
+    return {"status": True, "msg": "????", "role": "user"}
 
 
 @router.post("/api/logout")

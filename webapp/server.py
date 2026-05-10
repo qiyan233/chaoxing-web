@@ -67,7 +67,7 @@ def create_app() -> FastAPI:
 
     # 路由注册（P4 阶段实现）
     try:
-        from webapp.routers import auth, accounts, proxies, tasks, settings as settings_router, pages, stream, update
+        from webapp.routers import auth, accounts, proxies, tasks, settings as settings_router, pages, stream, update, users
 
         app.include_router(pages.router)
         app.include_router(auth.router)
@@ -77,6 +77,7 @@ def create_app() -> FastAPI:
         app.include_router(settings_router.router)
         app.include_router(stream.router)
         app.include_router(update.router)
+        app.include_router(users.router)
     except ImportError:
         pass
 
