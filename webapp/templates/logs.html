@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}任务日志 · {{ app_name }}{% endblock %}
+{% block content %}
+<div x-data="logsPage()">
+    <header class="page-head"><div><h1 class="page-title">任务日志</h1><p class="page-sub">从数据库读取运行记录，点击任务编号查看详情。</p></div><button class="btn btn-ghost" @click="refresh" :disabled="loading">刷新</button></header>
+    <section class="panel"><div class="panel-body">
+        <form @submit.prevent="offset = 0; refresh()" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+            <input class="input" style="flex:1;min-width:180px" x-model="q" placeholder="搜索日志、账号名称或手机号" aria-label="搜索日志">
+            <select class="select" style="width:150px" x-model="level" aria-label="日志级别"><option value="">全部级别</option><option value="info">信息</option><option value="success">成功</option><option value="warning">警告</option><option value="error">错误</option><option value="debug">调试</option></select>
+            <button type="submit" class="btn btn-primary" :disabled="loading">筛选</button>
+        </form>
+        <div class="error-banner danger" x-show="error" x-text="error"></div>
+        <p x-show="loading">正在读取日志…</p>
+        <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;text-align:left"><thead><tr><th>时间</th><th>任务 / 账号</th><th>级别</th><th>日志内容</th></tr></thead><tbody>
+            <template x-for="row in rows" :key="row.id"><tr style="border-top:1px solid var(--line)"><td style="padding:12px;white-space:nowrap" x-text="fmtTime(row.created_at)"></td><td><a :href="`{{ '/user/tasks/' if user_scope|default(false) else '/tasks/' }}${row.task_id}#task-logs`" x-text="`#${row.task_id} · ${row.account_name}`"></a></td><td><span class="tag" x-text="row.level"></span></td><td style="padding:12px;overflow-wrap:anywhere" x-text="row.message"></td></tr></template>
+        </tbody></table></div>
+        <p class="empty" x-show="!loading && !error && !rows.length">没有匹配的日志</p>
+        <div style="display:flex;gap:12px;align-items:center;justify-content:flex-end;margin-top:16px">
+            <span x-text="`共 ${total} 条 · 第 ${Math.floor(offset / limit) + 1} 页`"></span>
+            <button class="btn btn-ghost" @click="previous" :disabled="loading || offset === 0">上一页</button>
+            <button class="btn btn-ghost" @click="next" :disabled="loading || offset + limit >= total">下一页</button>
+        </div>
+    </div></section>
+</div>
+<script>
+function logsPage() {
+    return actionPage({rows: [], total: 0, q: '', level: '', offset: 0, limit: 50, loading: false, error: '',
+        async init() { await this.refresh(); },
+        async refresh() {
+            this.loading = true; this.error = '';
+            try {
+                const params = new URLSearchParams({q: this.q, level: this.level, offset: this.offset, limit: this.limit});
+                const data = await apiFetch(`/api/tasks/logs?${params}`).then(r => r.json());
+                this.rows = data.items; this.total = data.total;
+            } finally { this.loading = false; }
+        },
+        async previous() { if (this.offset > 0) {this.offset = Math.max(0, this.offset - this.limit); await this.refresh();} },
+        async next() { if (this.offset + this.limit < this.total) {this.offset += this.limit; await this.refresh();} },
+    });
+}
+</script>
+{% endblock %}

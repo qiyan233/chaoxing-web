@@ -1,18 +1,19 @@
 {% extends "base.html" %}
-{% block title %}Roster · {{ app_name }}{% endblock %}
+{% block title %}学习通账号 · {{ app_name }}{% endblock %}
 {% block content %}
-<div x-data="accountsPage()" x-init="init()">
+<div x-data="accountsPage()">
+    <div class="error-banner danger" x-show="actionError" x-text="actionError" x-cloak role="alert"></div>
 
     <header class="page-head">
         <div>
             <div class="page-eyebrow">// roster · 02</div>
-            <h1 class="page-title">Roster <span class="serif" style="color: var(--bone-mute);">— identities under control.</span></h1>
-            <p class="page-sub">Each entry is a Chaoxing handle. Passwords are sealed with a local Fernet key.</p>
+            <h1 class="page-title">学习通账号 <span class="serif" style="color: var(--bone-mute);">— 管理账号与课程。</span></h1>
+            <p class="page-sub">添加学习通账号，验证登录后选择课程并创建任务。</p>
         </div>
         <div class="page-actions">
             <button class="btn btn-primary" @click="openCreate">
                 <span class="glyph">+</span>
-                <span>注册身份</span>
+                <span>添加学习通账号</span>
             </button>
         </div>
     </header>
@@ -39,14 +40,14 @@
                     <span class="muted tabular" style="font-size: 0.75rem;"
                           x-text="a.last_login_at ? window.fmtTime(a.last_login_at) : '—'"></span>
                     <span class="col-actions">
-                        <a class="btn btn-ghost btn-sm" :href="`/accounts/${a.id}/courses`" title="courses">
+                        <a class="btn btn-ghost btn-sm" :href="`/accounts/${a.id}/courses`" title="选择课程">
                             <span class="glyph">⌘</span>
-                            <span>courses</span>
+                            <span>选择课程</span>
                         </a>
-                        <button class="btn btn-ghost btn-sm" @click="relogin(a)" title="reauthenticate">
+                        <button class="btn btn-ghost btn-sm" @click="relogin(a)" title="重新登录" aria-label="重新登录">
                             <span class="glyph">↻</span>
                         </button>
-                        <button class="btn btn-ghost btn-sm" @click="remove(a)" title="remove" style="color: var(--crimson);">
+                        <button class="btn btn-ghost btn-sm" @click="remove(a)" title="删除账号" aria-label="删除账号" style="color: var(--crimson);">
                             <span class="glyph">×</span>
                         </button>
                     </span>
@@ -54,7 +55,7 @@
             </template>
             <div class="empty" x-show="accounts.length === 0">
                 账号簿空<br>
-                <span style="font-size: 0.78rem; font-family: var(--mono); font-style: normal;">注册首个身份开始操作</span>
+                <span style="font-size: 0.78rem; font-family: var(--mono); font-style: normal;">添加第一个学习通账号开始使用</span>
             </div>
         </div>
     </section>
@@ -66,7 +67,7 @@
              @click.self="creating = false" style="display: none;">
             <div class="modal" @click.stop>
                 <div class="modal-head">
-                    <div class="modal-title"><span class="num">+</span>注册身份</div>
+                    <div class="modal-title"><span class="num">+</span>添加学习通账号</div>
                     <button type="button" class="modal-close" @click="creating = false">×</button>
                 </div>
                 <form @submit.prevent="submitCreate">
@@ -106,7 +107,7 @@
 
 <script>
 function accountsPage() {
-    return {
+    return actionPage({
         accounts: [],
         form: {phone: '', password: '', nickname: '', verify_login: true},
         submitting: false,
@@ -115,7 +116,7 @@ function accountsPage() {
             await this.refresh();
         },
         async refresh() {
-            this.accounts = await fetch('/api/accounts').then(r => r.json());
+            this.accounts = await apiFetch('/api/accounts').then(r => r.json());
         },
         openCreate() {
             this.form = {phone: '', password: '', nickname: '', verify_login: true};
@@ -124,7 +125,7 @@ function accountsPage() {
         async submitCreate() {
             this.submitting = true;
             try {
-                const res = await fetch('/api/accounts', {
+                const res = await apiFetch('/api/accounts', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(this.form),
@@ -144,14 +145,14 @@ function accountsPage() {
         },
         async relogin(a) {
             showToast(`重新认证 ${a.phone} …`, 'info');
-            const res = await fetch(`/api/accounts/${a.id}/login`, {method: 'POST'});
+            const res = await apiFetch(`/api/accounts/${a.id}/login`, {method: 'POST'});
             const j = await res.json();
             showToast(j.msg || '完成', j.status ? 'success' : 'danger');
             await this.refresh();
         },
         async remove(a) {
             if (!confirm(`确定移除身份 ${a.phone} ?`)) return;
-            const res = await fetch(`/api/accounts/${a.id}`, {method: 'DELETE'});
+            const res = await apiFetch(`/api/accounts/${a.id}`, {method: 'DELETE'});
             if (res.ok) {
                 showToast('已移除', 'success');
                 await this.refresh();
@@ -166,7 +167,7 @@ function accountsPage() {
                 error:   'tag-fail',
             })[s] || 'tag-pending';
         },
-    };
+    });
 }
 </script>
 {% endblock %}

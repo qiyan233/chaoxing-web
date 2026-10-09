@@ -6,16 +6,14 @@
 """
 from __future__ import annotations
 
-import contextvars
 import enum
-import threading
-from concurrent.futures.thread import ThreadPoolExecutor
 from typing import Any
 
 from api.base import Chaoxing, StudyResult
 from api.live import Live
 from api.live_process import LiveProcessor
 from api.logger import logger
+from api.session_context import CancelledError, SessionContext
 
 
 class ChapterResult(enum.Enum):
@@ -70,14 +68,10 @@ def process_job(
                 defaults=defaults,
                 course_id=course.get("courseId"),
             )
-            thread = threading.Thread(
-                target=LiveProcessor.run_live,
-                args=(live, speed),
-                daemon=True,
-            )
-            thread.start()
-            thread.join()
+            LiveProcessor.run_live(live, speed)
             return StudyResult.SUCCESS
+        except CancelledError:
+            raise
         except Exception as exc:
             logger.error(f"处理直播任务时出错: {exc}")
             return StudyResult.ERROR
@@ -104,16 +98,11 @@ def process_chapter(
     if job_info.get("notOpen", False):
         return ChapterResult.NOT_OPEN
 
-    job_contexts = [(job, contextvars.copy_context()) for job in jobs]
-
-    def _run_in_context(item: tuple[dict[str, Any], contextvars.Context]) -> StudyResult:
-        job, ctx = item
-        return ctx.run(process_job, chaoxing, course, job, job_info, speed)
-
     job_results: list[StudyResult] = []
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        for result in executor.map(_run_in_context, job_contexts):
-            job_results.append(result)
+    for job in jobs:
+        if SessionContext.is_cancelled():
+            raise CancelledError("任务已取消")
+        job_results.append(process_job(chaoxing, course, job, job_info, speed))
 
     for result in job_results:
         if result.is_failure():

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}新建任务 · {{ app_name }}{% endblock %}
+{% block content %}
+<div x-data="newTaskPage()">
+    <header class="page-head"><div><h1 class="page-title">新建课程任务</h1><p class="page-sub">选择学习通账号，然后选择课程并确认执行参数。所有任务按顺序串行执行。</p></div></header>
+    <section class="panel"><div class="panel-head">选择学习通账号</div><div class="panel-body">
+        <div class="error-banner danger" x-show="error" x-text="error"></div>
+        <p x-show="loading">正在加载账号和任务状态…</p>
+        <div class="course-grid" x-show="!loading && !error">
+            <template x-for="account in accounts" :key="account.id"><div class="course-card">
+                <h3 x-text="account.nickname || account.phone"></h3>
+                <p class="muted" x-text="busyAccount(account.id) ? '该账号已有任务，等待结束后可新建' : (account.last_error || '选择课程后再提交任务')"></p>
+                <a class="btn btn-primary" x-show="!busyAccount(account.id)" :href="`{{ '/user/accounts/' if user_scope|default(false) else '/accounts/' }}${account.id}/courses`">选择课程 {{ icon('chevron','icon-sm') }}</a>
+                <a class="btn btn-ghost" x-show="busyAccount(account.id)" :href="`{{ '/user/tasks/' if user_scope|default(false) else '/tasks/' }}${busyAccount(account.id)?.id}`">查看已有任务</a>
+            </div></template>
+        </div>
+        <p x-show="!loading && !error && !accounts.length">还没有学习通账号，请先添加账号。</p>
+        <a class="btn btn-ghost" href="{{ '/user/accounts' if user_scope|default(false) else '/accounts' }}">管理 / 添加账号</a>
+    </div></section>
+</div>
+<script>
+function newTaskPage() {
+    return actionPage({accounts: [], tasks: [], loading: true, error: '',
+        async init() {
+            try {
+                this.accounts = await apiFetch('/api/accounts').then(r => r.json());
+                this.tasks = await apiFetch('/api/tasks?limit=1000').then(r => r.json());
+            } finally { this.loading = false; }
+        },
+        busyAccount(id) { return this.tasks.find(t => t.account_id === id && ['pending','running'].includes(t.status)); },
+    });
+}
+</script>
+{% endblock %}

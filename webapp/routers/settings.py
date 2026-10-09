@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from webapp.deps import get_db_session, require_admin
 from webapp.models.settings import AppSetting
-from webapp.config import MAX_CONCURRENT_ACCOUNTS
 from webapp.schemas.settings import NotificationConfig, ProxyConfig, RuntimeConfig, TikuConfig
 
 router = APIRouter(prefix="/api/settings", tags=["settings"], dependencies=[Depends(require_admin)])
@@ -87,10 +86,8 @@ async def save_proxy(
 
 @router.get("/runtime", response_model=RuntimeConfig)
 async def get_runtime(db: AsyncSession = Depends(get_db_session)):
-    data = await _load_json(db, AppSetting.KEY_RUNTIME_CONFIG)
-    if not data:
-        return RuntimeConfig(max_concurrent_accounts=MAX_CONCURRENT_ACCOUNTS)
-    return RuntimeConfig(**data)
+    # 旧配置可能包含大于 1 的值，读取时返回实际生效的串行策略。
+    return RuntimeConfig()
 
 
 @router.post("/runtime")
@@ -99,4 +96,4 @@ async def save_runtime(
     db: AsyncSession = Depends(get_db_session),
 ):
     await _save_json(db, AppSetting.KEY_RUNTIME_CONFIG, payload.model_dump())
-    return {"status": True, "msg": "运行配置已保存，重启服务后生效"}
+    return {"status": True, "msg": "运行配置已保存，学习任务固定串行执行"}

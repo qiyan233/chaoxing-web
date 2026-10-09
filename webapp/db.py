@@ -77,6 +77,14 @@ def _run_lightweight_migrations(sync_conn) -> None:
             "ALTER TABLE study_tasks ADD COLUMN mode VARCHAR(16) NOT NULL DEFAULT 'normal'"
         )
 
+    # Historical done_chapters includes failures and skipped chapters. Preserve
+    # it without guessing how those chapters should be classified.
+    for column in ("succeeded_chapters", "failed_chapters", "skipped_chapters"):
+        if column not in existing:
+            sync_conn.exec_driver_sql(
+                f"ALTER TABLE study_tasks ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"
+            )
+
     account_cols = sync_conn.exec_driver_sql(
         "PRAGMA table_info(chaoxing_accounts)"
     ).fetchall()
@@ -91,10 +99,10 @@ def _run_lightweight_migrations(sync_conn) -> None:
 
 
 def _ensure_default_admin_password(sync_conn) -> None:
-    """初始化/迁移默认管理员密码。
+    """仅在管理员密码缺失或为空时初始化默认密码。
 
-    仅执行一次：把当前库的管理员密码设置为 admin123，并写入迁移标记。
-    后续管理员在页面里修改密码后，启动服务不会再覆盖。
+    旧库即使缺少迁移标记也保留已有密码。标记在密码处理成功后补齐，
+    与初始化一起由 init_db 的事务提交；失败时不会记录成功。
     """
     from webapp.models.settings import AppSetting
     from webapp.services.credential import hash_admin_password
@@ -103,25 +111,24 @@ def _ensure_default_admin_password(sync_conn) -> None:
     marker = sync_conn.exec_driver_sql(
         "SELECT value FROM app_settings WHERE key = ?", (marker_key,)
     ).fetchone()
-    if marker:
-        return
-
-    password_hash = hash_admin_password("admin123")
     existing = sync_conn.exec_driver_sql(
         "SELECT value FROM app_settings WHERE key = ?", (AppSetting.KEY_ADMIN_PASSWORD,)
     ).fetchone()
-    if existing:
-        sync_conn.exec_driver_sql(
-            "UPDATE app_settings SET value = ? WHERE key = ?",
-            (password_hash, AppSetting.KEY_ADMIN_PASSWORD),
-        )
-    else:
+    if existing is None or existing[0] is None or existing[0] == "":
+        password_hash = hash_admin_password("admin123")
+        if existing is not None:
+            sync_conn.exec_driver_sql(
+                "UPDATE app_settings SET value = ? WHERE key = ?",
+                (password_hash, AppSetting.KEY_ADMIN_PASSWORD),
+            )
+        else:
+            sync_conn.exec_driver_sql(
+                "INSERT INTO app_settings (key, value) VALUES (?, ?)",
+                (AppSetting.KEY_ADMIN_PASSWORD, password_hash),
+            )
+
+    if marker is None:
         sync_conn.exec_driver_sql(
             "INSERT INTO app_settings (key, value) VALUES (?, ?)",
-            (AppSetting.KEY_ADMIN_PASSWORD, password_hash),
+            (marker_key, "done"),
         )
-
-    sync_conn.exec_driver_sql(
-        "INSERT INTO app_settings (key, value) VALUES (?, ?)",
-        (marker_key, "done"),
-    )

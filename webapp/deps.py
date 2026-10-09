@@ -47,13 +47,18 @@ async def require_login(
         raise HTTPException(status_code=401, detail="未登录")
 
 
+def is_admin_session(request: Request) -> bool:
+    """显式角色优先，仅缺少角色的旧会话兼容 admin 用户名。"""
+    if "role" in request.session:
+        return request.session["role"] == "admin"
+    return request.session.get("user") == "admin"
+
+
 async def require_admin(request: Request) -> None:
-    """要求管理员角色。当前单用户模式下登录者默认为 admin。"""
+    """要求登录且拥有管理员角色。"""
     if not request.session.get("authenticated"):
         raise HTTPException(status_code=401, detail="未登录")
-    role = request.session.get("role")
-    user = request.session.get("user")
-    if role != "admin" and user != "admin":
+    if not is_admin_session(request):
         raise HTTPException(status_code=403, detail="需要管理员权限")
 
 

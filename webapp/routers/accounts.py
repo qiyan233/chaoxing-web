@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from webapp.deps import get_db_session, require_login
+from webapp.deps import get_db_session, is_admin_session, require_login
 from webapp.models.account import ChaoxingAccount
 from webapp.schemas.account import (
     AccountCreate,
@@ -29,7 +29,7 @@ def _apply_login_result(account: ChaoxingAccount, result: dict) -> None:
 
 
 def _is_admin(request: Request) -> bool:
-    return request.session.get("role") == "admin" or request.session.get("user") == "admin"
+    return is_admin_session(request)
 
 
 def _current_user_id(request: Request) -> int | None:

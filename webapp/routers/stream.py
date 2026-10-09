@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from webapp.deps import get_db_session, require_login
 from webapp.models.task import StudyTask, TaskStatus
+from webapp.routers.tasks import _ensure_task_access
 from webapp.services.progress_bus import progress_bus
 
 router = APIRouter(prefix="/api/tasks", tags=["stream"], dependencies=[Depends(require_login)])
@@ -35,10 +36,18 @@ async def task_stream(
     task = await db.get(StudyTask, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="任务不存在")
+    await _ensure_task_access(request, task, db)
+
+    result_counts = {
+        "succeeded_chapters": task.succeeded_chapters,
+        "failed_chapters": task.failed_chapters,
+        "skipped_chapters": task.skipped_chapters,
+    }
 
     # 已完成的任务不需要订阅
     if task.status in (
         TaskStatus.COMPLETED.value,
+        TaskStatus.PARTIAL.value,
         TaskStatus.FAILED.value,
         TaskStatus.CANCELLED.value,
     ):
@@ -49,6 +58,7 @@ async def task_stream(
                     "status": task.status,
                     "done": task.done_chapters,
                     "total": task.total_chapters,
+                    **result_counts,
                     "error": task.error_message,
                 }
             ).encode("utf-8")
@@ -64,6 +74,7 @@ async def task_stream(
                 "status": task.status,
                 "done": task.done_chapters,
                 "total": task.total_chapters,
+                **result_counts,
                 "current_course": task.current_course,
                 "current_chapter": task.current_chapter,
             }
@@ -82,7 +93,7 @@ async def task_stream(
 
                 yield _sse_format(event).encode("utf-8")
 
-                if event.get("type") in {"task_done", "task_failed", "task_cancelled"}:
+                if event.get("type") in {"task_done", "task_partial", "task_failed", "task_cancelled"}:
                     break
         finally:
             await progress_bus.unsubscribe(task_id, queue)

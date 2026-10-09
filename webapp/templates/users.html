@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}用户 · {{ app_name }}{% endblock %}
 {% block content %}
-<div x-data="usersPage()" x-init="init()">
+<div x-data="usersPage()">
+    <div class="error-banner danger" x-show="actionError" x-text="actionError" x-cloak role="alert"></div>
 
     <header class="page-head">
         <div>
@@ -144,7 +145,7 @@
 
 <script>
 function usersPage() {
-    return {
+    return actionPage({
         users: [],
         accounts: [],
         bindSelection: {},
@@ -154,10 +155,8 @@ function usersPage() {
             await this.refresh();
         },
         async refresh() {
-            const [u, a] = await Promise.all([
-                fetch('/api/users/overview').then(r => r.json()),
-                fetch('/api/users/account-options').then(r => r.json()),
-            ]);
+            const u = await apiFetch('/api/users/overview').then(r => r.json());
+            const a = await apiFetch('/api/users/account-options').then(r => r.json());
             this.users = Array.isArray(u) ? u : [];
             this.accounts = Array.isArray(a) ? a : [];
         },
@@ -180,7 +179,7 @@ function usersPage() {
         async createUser() {
             this.busy = true;
             try {
-                const res = await fetch('/api/users', {
+                const res = await apiFetch('/api/users', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(this.form),
@@ -196,7 +195,7 @@ function usersPage() {
             }
         },
         async updateStatus(u) {
-            const res = await fetch(`/api/users/${u.id}`, {
+            const res = await apiFetch(`/api/users/${u.id}`, {
                 method: 'PUT',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({status: u.status}),
@@ -212,7 +211,7 @@ function usersPage() {
                 showToast('密码至少 4 位', 'danger');
                 return;
             }
-            const res = await fetch(`/api/users/${u.id}`, {
+            const res = await apiFetch(`/api/users/${u.id}`, {
                 method: 'PUT',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({password}),
@@ -222,26 +221,26 @@ function usersPage() {
         },
         async deleteUser(u) {
             if (!confirm(`确定删除平台账号 ${u.username}？学习通账号不会删除，只会解除归属。`)) return;
-            const res = await fetch(`/api/users/${u.id}`, {method: 'DELETE'});
+            const res = await apiFetch(`/api/users/${u.id}`, {method: 'DELETE'});
             showToast(res.ok ? '用户已删除' : '删除失败', res.ok ? 'success' : 'danger');
             await this.refresh();
         },
         async bindAccount(u) {
             const accountId = this.bindSelection[u.id];
             if (!accountId) return;
-            const res = await fetch(`/api/users/${u.id}/accounts/${accountId}`, {method: 'PUT'});
+            const res = await apiFetch(`/api/users/${u.id}/accounts/${accountId}`, {method: 'PUT'});
             const j = await res.json().catch(() => ({}));
             showToast(j.detail || j.msg || '绑定完成', res.ok ? 'success' : 'danger');
             this.bindSelection[u.id] = '';
             await this.refresh();
         },
         async unbindAccount(u, a) {
-            const res = await fetch(`/api/users/${u.id}/accounts/${a.id}`, {method: 'DELETE'});
+            const res = await apiFetch(`/api/users/${u.id}/accounts/${a.id}`, {method: 'DELETE'});
             const j = await res.json().catch(() => ({}));
             showToast(j.detail || j.msg || '已解绑', res.ok ? 'success' : 'danger');
             await this.refresh();
         },
-    };
+    });
 }
 </script>
 {% endblock %}

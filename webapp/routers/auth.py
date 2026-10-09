@@ -206,6 +206,7 @@ def _cpu_counters() -> dict[str, float] | None:
 def _cpu_status() -> dict[str, Any]:
     sample = _cpu_counters()
     now = time.time()
+
     if sample is None:
         return {"percent": None, "sample_interval": None}
 
@@ -361,12 +362,15 @@ async def server_status(
     _: None = Depends(require_admin),
 ):
     """管理员服务器状态面板数据。"""
+    from webapp.services.dashboard_summary import dashboard_summary
+
     disk = shutil.disk_usage(DATA_DIR)
     load_avg = os.getloadavg() if hasattr(os, "getloadavg") else None
     now = time.time()
 
     return {
         "status": "ok",
+        "dashboard": await dashboard_summary(db),
         "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "started_at": datetime.fromtimestamp(SERVER_STARTED_AT).strftime("%Y-%m-%d %H:%M:%S"),
         "uptime_seconds": int(now - SERVER_STARTED_AT),

@@ -1,13 +1,14 @@
 {% extends "base.html" %}
 {% block title %}配置 · {{ app_name }}{% endblock %}
 {% block content %}
-<div x-data="settingsPage()" x-init="init()">
+<div x-data="settingsPage()" @hashchange.window="openSection(location.hash.slice(1))">
+    <div class="error-banner danger" x-show="actionError" x-text="actionError" x-cloak role="alert"></div>
 
     <header class="page-head">
         <div>
             <div class="page-eyebrow">// 配置 · 04</div>
             <h1 class="page-title">配置 <span class="serif" style="color: var(--bone-mute);">— 全局代理姿态。</span></h1>
-            <p class="page-sub">影响所有操作的开关：题库、推送通知、代理池、运行并发、主密码。</p>
+            <p class="page-sub">全局配置：题库、代理池、串行运行、管理员密码。</p>
         </div>
     </header>
 
@@ -16,24 +17,20 @@
             <span class="tab-num">01</span>
             <span>题库</span>
         </button>
-        <button class="tab" :class="active === 'notify' ? 'active' : ''" @click="active = 'notify'">
-            <span class="tab-num">02</span>
-            <span>通知</span>
-        </button>
         <button class="tab" :class="active === 'proxy' ? 'active' : ''" @click="active = 'proxy'">
-            <span class="tab-num">03</span>
+            <span class="tab-num">02</span>
             <span>代理池</span>
         </button>
         <button class="tab" :class="active === 'runtime' ? 'active' : ''" @click="active = 'runtime'">
-            <span class="tab-num">04</span>
+            <span class="tab-num">03</span>
             <span>运行</span>
         </button>
         <button class="tab" :class="active === 'pwd' ? 'active' : ''" @click="active = 'pwd'">
-            <span class="tab-num">05</span>
+            <span class="tab-num">04</span>
             <span>密码</span>
         </button>
         <button class="tab" :class="active === 'update' ? 'active' : ''" @click="active = 'update'; checkUpdate(false)">
-            <span class="tab-num">06</span>
+            <span class="tab-num">05</span>
             <span>更新</span>
         </button>
     </div>
@@ -144,41 +141,7 @@
                 </div>
 
                 <div class="col-12" style="text-align: right; margin-top: 14px;">
-                    <button type="submit" class="btn btn-primary">
-                        <span class="glyph">✓</span>
-                        <span>提交配置</span>
-                    </button>
-                </div>
-            </form>
-        </div>
-    </section>
-
-    <!-- NOTIFY -->
-    <section class="panel bracketed" x-show="active === 'notify'" x-transition.opacity>
-        <div class="panel-head"><span><span class="num">02</span> 通知</span></div>
-        <div class="panel-body">
-            <form @submit.prevent="saveNotify" class="form-grid">
-                <div class="field col-12">
-                    <label class="field-label">提供商</label>
-                    <select class="select" x-model="notify.provider">
-                        <option value="">— 已禁用</option>
-                        <option value="ServerChan">ServerChan · 多平台</option>
-                        <option value="Qmsg">Qmsg · QQ 推送</option>
-                        <option value="Bark">Bark · iOS</option>
-                        <option value="Telegram">Telegram 机器人</option>
-                    </select>
-                </div>
-                <div class="field col-12">
-                    <label class="field-label">Webhook 网址</label>
-                    <input type="text" class="input" x-model="notify.url"
-                           placeholder="根据提供商规范填充完整推送网址">
-                </div>
-                <div class="field col-12" x-show="notify.provider === 'Telegram'">
-                    <label class="field-label">Telegram chat_id</label>
-                    <input type="text" class="input" x-model="notify.tg_chat_id">
-                </div>
-                <div class="col-12" style="text-align: right; margin-top: 8px;">
-                    <button type="submit" class="btn btn-primary">
+                    <button type="submit" class="btn btn-primary" :disabled="!settingsLoaded">
                         <span class="glyph">✓</span>
                         <span>提交配置</span>
                     </button>
@@ -189,7 +152,7 @@
 
     <!-- PROXY -->
     <section class="panel bracketed" x-show="active === 'proxy'" x-transition.opacity>
-        <div class="panel-head"><span><span class="num">03</span> 代理池</span></div>
+        <div class="panel-head"><span><span class="num">02</span> 代理池</span></div>
         <div class="panel-body">
             <form @submit.prevent="saveProxy" class="form-grid">
                 <div class="field col-4">
@@ -212,13 +175,6 @@
                         <option value="manual">手动列表</option>
                         <option value="scdn">SCDN 代理池</option>
                         <option value="local">本地代理池</option>
-                    </select>
-                </div>
-                <div class="field col-4">
-                    <label class="field-label">失败切换</label>
-                    <select class="select" x-model="proxy.failover">
-                        <option :value="true">允许后续任务切换</option>
-                        <option :value="false">固定当前选择</option>
                     </select>
                 </div>
                 <div class="field col-4" x-show="proxy.source === 'scdn'">
@@ -260,7 +216,7 @@
                     </p>
                 </div>
                 <div class="col-12" style="text-align: right; margin-top: 8px;">
-                    <button type="submit" class="btn btn-primary">
+                    <button type="submit" class="btn btn-primary" :disabled="!settingsLoaded">
                         <span class="glyph">✓</span>
                         <span>保存代理池</span>
                     </button>
@@ -271,43 +227,38 @@
 
     <!-- RUNTIME -->
     <section class="panel bracketed" x-show="active === 'runtime'" x-transition.opacity>
-        <div class="panel-head"><span><span class="num">04</span> 运行并发</span></div>
+        <div class="panel-head"><span><span class="num">03</span> 串行运行</span></div>
         <div class="panel-body">
-            <form @submit.prevent="saveRuntime" class="form-grid">
+            <div class="form-grid">
                 <div class="field col-4">
-                    <label class="field-label">最大同时刷课账号数</label>
-                    <input type="number" class="input tabular" min="1" max="16" step="1"
-                           x-model.number="runtime.max_concurrent_accounts">
+                    <label class="field-label">同时执行账号数</label>
+                    <input type="number" class="input tabular" value="1" readonly aria-label="同时执行账号数，固定为 1">
                 </div>
                 <div class="field col-8">
                     <label class="field-label">生效说明</label>
                     <div class="input" style="min-height: 44px; height: auto; line-height: 1.75;">
-                        控制后台最多同时跑几个学习通账号；同一学习通账号仍只能有一个进行中的任务。
-                        保存后需要重启服务，新并发数才会生效。
+                        一次只执行一个学习任务，其他账号的任务按提交顺序排队。
+                        普通模式和快速模式的章节任务点也依次处理。
                     </div>
                 </div>
                 <div class="col-12">
                     <div class="terminal" style="padding: 14px;">
-                        <div>建议值：普通 VPS 先用 <strong>1–2</strong>；代理池稳定、CPU/内存足够时再逐步提高。</div>
-                        <div class="muted" style="margin-top: 6px;">数值过大可能导致代理超时、学习通风控、视频处理线程互相抢占。</div>
+                        <div>执行策略固定为<strong>串行</strong>，不提供并发开关。</div>
+                        <div class="muted" style="margin-top: 6px;">已有运行配置和环境变量中的并发数不会改变此策略。</div>
                     </div>
                 </div>
                 <div class="col-12" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; flex-wrap: wrap;">
-                    <button type="submit" class="btn btn-primary">
-                        <span class="glyph">✓</span>
-                        <span>保存运行配置</span>
-                    </button>
                     <button type="button" class="btn btn-ghost" @click="restartService">
                         重启服务
                     </button>
                 </div>
-            </form>
+            </div>
         </div>
     </section>
 
     <!-- PWD -->
     <section class="panel bracketed" x-show="active === 'pwd'" x-transition.opacity>
-        <div class="panel-head"><span><span class="num">05</span> 轮换密码</span></div>
+        <div class="panel-head"><span><span class="num">04</span> 轮换密码</span></div>
         <div class="panel-body">
             <form @submit.prevent="changePassword" style="max-width: 460px; display: flex; flex-direction: column; gap: 16px;">
                 <div class="field">
@@ -334,7 +285,7 @@
 
     <!-- UPDATE -->
     <section class="panel bracketed" x-show="active === 'update'" x-transition.opacity>
-        <div class="panel-head"><span><span class="num">06</span> 系统更新</span></div>
+        <div class="panel-head"><span><span class="num">05</span> 系统更新</span></div>
         <div class="panel-body">
             <div class="form-grid">
                 <div class="field col-6">
@@ -356,14 +307,14 @@
                 <div class="field col-3">
                     <label class="field-label">本地改动</label>
                     <div class="input" style="min-height: 44px;">
-                        <span class="tag" :class="update.dirty ? 'tag-fail' : 'tag-success'" x-text="update.dirty ? 'dirty' : 'clean'"></span>
+                        <span class="tag" :class="update.dirty ? 'tag-fail' : 'tag-info'" x-text="typeof update.dirty !== 'boolean' ? '—' : (update.dirty ? '有本地改动' : '无本地改动')"></span>
                     </div>
                 </div>
                 <div class="field col-3">
                     <label class="field-label">状态</label>
                     <div class="input" style="min-height: 44px;">
                         <span class="tag" :class="update.has_update ? 'tag-warn' : 'tag-success'"
-                              x-text="update.has_update ? '发现更新' : '已是最新'"></span>
+                              x-text="updateChecking ? '检查中' : update.error ? '检查失败' : !updateLoaded ? '尚未检查' : !update.supported ? '不支持在线更新' : update.has_update ? '发现更新' : '已是最新'"></span>
                     </div>
                 </div>
 
@@ -399,7 +350,7 @@
                         <span x-show="!updateChecking">检查更新</span>
                         <span x-show="updateChecking" class="spinner"></span>
                     </button>
-                    <button type="button" class="btn btn-primary" @click="applyUpdate" :disabled="updateApplying || !update.has_update || update.dirty">
+                    <button type="button" class="btn btn-primary" @click="applyUpdate" :disabled="updateApplying || updateChecking || !updateLoaded || update.error || !update.supported || !update.has_update || update.dirty">
                         <span x-show="!updateApplying">在线更新</span>
                         <span x-show="updateApplying" class="spinner"></span>
                         <span x-show="updateApplying">更新中…</span>
@@ -415,22 +366,27 @@
 
 <script>
 function settingsPage() {
-    return {
+    return actionPage({
         active: 'tiku',
         tiku: {},
-        notify: {},
+        settingsLoaded: false,
         proxy: {},
         runtime: {max_concurrent_accounts: 1},
         update: {},
+        updateLoaded: false,
         updateOutput: '',
         updateChecking: false,
         updateApplying: false,
         pwd: {old: '', new: '', confirm: ''},
+        openSection(section) {
+            if (['tiku', 'proxy', 'runtime', 'pwd', 'update'].includes(section)) this.active = section;
+        },
         async init() {
-            this.tiku = await fetch('/api/settings/tiku').then(r => r.json());
-            this.notify = await fetch('/api/settings/notification').then(r => r.json());
-            this.proxy = await fetch('/api/settings/proxy').then(r => r.json());
-            this.runtime = await fetch('/api/settings/runtime').then(r => r.json());
+            this.openSection(location.hash.slice(1));
+            this.tiku = await apiFetch('/api/settings/tiku').then(r => r.json());
+            this.proxy = await apiFetch('/api/settings/proxy').then(r => r.json());
+            this.runtime = await apiFetch('/api/settings/runtime').then(r => r.json());
+            this.settingsLoaded = true;
             // cast string booleans
             ['submit', 'likeapi_search', 'likeapi_vision', 'likeapi_retry', 'check_llm_connection'].forEach(k => {
                 if (typeof this.tiku[k] === 'string') this.tiku[k] = this.tiku[k] === 'true';
@@ -440,47 +396,29 @@ function settingsPage() {
             });
         },
         async saveTiku() {
-            const res = await fetch('/api/settings/tiku', {
+            const res = await apiFetch('/api/settings/tiku', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(this.tiku),
             });
             const j = await res.json();
-            showToast(j.msg || (res.ok ? 'saved' : 'failed'), res.ok ? 'success' : 'danger');
-        },
-        async saveNotify() {
-            const res = await fetch('/api/settings/notification', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(this.notify),
-            });
-            const j = await res.json();
-            showToast(j.msg || (res.ok ? 'saved' : 'failed'), res.ok ? 'success' : 'danger');
+            showToast(j.msg || (res.ok ? '配置已保存' : '保存失败'), res.ok ? 'success' : 'danger');
         },
         async saveProxy() {
-            const res = await fetch('/api/settings/proxy', {
+            const res = await apiFetch('/api/settings/proxy', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(this.proxy),
             });
             const j = await res.json();
-            showToast(j.msg || (res.ok ? 'saved' : 'failed'), res.ok ? 'success' : 'danger');
-        },
-        async saveRuntime() {
-            const res = await fetch('/api/settings/runtime', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(this.runtime),
-            });
-            const j = await res.json();
-            showToast(j.msg || (res.ok ? 'saved' : 'failed'), res.ok ? 'success' : 'danger');
+            showToast(j.msg || (res.ok ? '配置已保存' : '保存失败'), res.ok ? 'success' : 'danger');
         },
         async changePassword() {
             if (this.pwd.new !== this.pwd.confirm) {
                 showToast('两次密码不一致', 'danger');
                 return;
             }
-            const res = await fetch('/api/admin/password', {
+            const res = await apiFetch('/api/admin/password', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({new_password: this.pwd.new, old_password: this.pwd.old}),
@@ -493,9 +431,10 @@ function settingsPage() {
             if (this.updateChecking) return;
             this.updateChecking = true;
             try {
-                const res = await fetch('/api/update/status');
+                const res = await apiFetch('/api/update/status');
                 const j = await res.json();
                 this.update = j;
+                this.updateLoaded = true;
                 if (toast) {
                     showToast(j.error || (j.has_update ? '发现新版本' : '当前已是最新版本'), j.error ? 'danger' : (j.has_update ? 'warning' : 'success'));
                 }
@@ -508,7 +447,7 @@ function settingsPage() {
             this.updateApplying = true;
             this.updateOutput = '';
             try {
-                const res = await fetch('/api/update/apply', {method: 'POST'});
+                const res = await apiFetch('/api/update/apply', {method: 'POST'});
                 const j = await res.json();
                 this.updateOutput = [j.stdout, j.stderr].filter(Boolean).join('\n');
                 showToast(j.msg || (res.ok ? '更新完成' : '更新失败'), (res.ok && j.status) ? 'success' : 'danger');
@@ -519,12 +458,12 @@ function settingsPage() {
         },
         async restartService() {
             if (!confirm('确定重启服务？页面会短暂断开，几秒后刷新即可。')) return;
-            const res = await fetch('/api/update/restart', {method: 'POST'});
+            const res = await apiFetch('/api/update/restart', {method: 'POST'});
             const j = await res.json();
             showToast(j.msg || '正在重启', res.ok ? 'success' : 'danger');
-            setTimeout(() => window.location.reload(), 5000);
+            if (res.ok && j.status) setTimeout(() => window.location.reload(), 5000);
         },
-    };
+    });
 }
 </script>
 {% endblock %}

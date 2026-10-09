@@ -1,291 +1,132 @@
 {% extends "base.html" %}
-{% block title %}总览 · {{ app_name }}{% endblock %}
+{% block title %}仪表盘 · {{ app_name }}{% endblock %}
 {% block content %}
-<div x-data="dashboard()" x-init="init()">
-
-    <header class="page-head">
-        <div>
-            <div class="page-eyebrow">// 态势室</div>
-            <h1 class="page-title">总览 <span class="serif" style="color: var(--bone-mute);">— 实时快照。</span></h1>
-            <p class="page-sub">受控账号与飞行中的操作实时视图。</p>
+<div class="console-dashboard" x-data="dashboard()">
+    <div class="dashboard-error" x-show="error" x-cloak><span x-text="error"></span><button @click="refresh()" type="button">重新连接</button></div>
+    <section class="welcome-banner">
+        <div class="welcome-logo">{{ icon('book') }}</div>
+        <div class="welcome-copy">
+            <h2><span x-text="greeting()">你好</span>，{{ user }} <span aria-hidden="true">👋</span></h2>
+            <p>今天是 <span x-text="dateText()"></span>，<span x-text="server.status === 'ok' ? '系统运行正常。' : '正在连接本地服务。'"></span></p>
+            <p>当前有 <b x-text="stats.running">0</b> 个任务正在执行，<b x-text="stats.pending">0</b> 个任务排队，今日已完成 <b x-text="stats.today_completed">0</b> 个课程任务。</p>
+            <div class="welcome-actions">
+                <a class="btn btn-primary" href="/tasks/new">{{ icon('plus','icon-sm') }}新建课程任务</a>
+                <a class="btn btn-ghost" href="/accounts">{{ icon('users','icon-sm') }}账号管理</a>
+                <a class="btn btn-ghost" href="/settings">{{ icon('settings','icon-sm') }}系统设置</a>
+                <a class="btn btn-ghost" href="/logs">{{ icon('log','icon-sm') }}查看日志</a>
+            </div>
         </div>
-        <div class="page-actions">
-            <a href="/tasks" class="btn btn-ghost">
-                <span class="glyph">›</span>
-                <span>查看全部</span>
-            </a>
-        </div>
-    </header>
-
-    <section class="stat-grid stagger">
-        <div class="stat-cell">
-            <div class="stat-key">账号</div>
-            <div class="stat-value tabular" x-text="String(stats.accounts).padStart(2,'0')"></div>
-            <div class="stat-foot">已注册身份</div>
-        </div>
-        <div class="stat-cell live">
-            <div class="stat-key">飞行中</div>
-            <div class="stat-value tabular" x-text="String(stats.running).padStart(2,'0')"></div>
-            <div class="stat-foot">运行中的操作</div>
-        </div>
-        <div class="stat-cell warn">
-            <div class="stat-key">已完成</div>
-            <div class="stat-value tabular" x-text="String(stats.completed).padStart(2,'0')"></div>
-            <div class="stat-foot">最近 10 次</div>
-        </div>
-        <div class="stat-cell err">
-            <div class="stat-key">失败</div>
-            <div class="stat-value tabular" x-text="String(stats.failed).padStart(2,'0')"></div>
-            <div class="stat-foot">需要检查</div>
-        </div>
+        <img class="welcome-art" src="/static/img/console-hero.svg" alt="" aria-hidden="true">
     </section>
-
-    <section class="panel bracketed" style="margin-bottom: 24px;">
-        <header class="panel-head">
-            <span><span class="num">№ 02</span> 实时服务器状态</span>
-            <span class="tag tag-success" x-show="server.status === 'ok'">ONLINE</span>
-            <span class="tag tag-fail" x-show="server.status !== 'ok'">CHECKING</span>
-        </header>
-        <div class="panel-body">
-            <div class="form-grid">
-                <div class="field col-4">
-                    <label class="field-label">CPU 利用率</label>
-                    <div class="terminal" style="padding: 16px;">
-                        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px;">
-                            <strong class="tabular" style="font-size: 1.8rem;" x-text="percentText(server.resources?.cpu?.percent)"></strong>
-                            <span class="muted" x-text="`${server.runtime?.cpu_count || 0} 核`"></span>
-                        </div>
-                        <div class="progress thick" style="margin-top: 12px;">
-                            <span class="progress-bar run" :style="`width: ${meterValue(server.resources?.cpu?.percent)}%`"></span>
-                        </div>
-                        <div class="muted tabular" style="margin-top: 8px; font-size: 0.72rem;" x-text="server.resources?.cpu?.sample_interval ? `采样 ${server.resources.cpu.sample_interval}s` : '等待下一次采样'"></div>
-                    </div>
-                </div>
-
-                <div class="field col-4">
-                    <label class="field-label">内存</label>
-                    <div class="terminal" style="padding: 16px;">
-                        <div style="display: flex; justify-content: space-between; gap: 12px;">
-                            <strong class="tabular" style="font-size: 1.8rem;" x-text="percentText(server.resources?.memory?.percent)"></strong>
-                            <span class="muted" x-text="server.resources?.memory?.used ? `${formatBytes(server.resources.memory.used)} / ${formatBytes(server.resources.memory.total)}` : '—'"></span>
-                        </div>
-                        <div class="progress thick" style="margin-top: 12px;">
-                            <span class="progress-bar run" :style="`width: ${meterValue(server.resources?.memory?.percent)}%`"></span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="field col-4">
-                    <label class="field-label">硬盘</label>
-                    <div class="terminal" style="padding: 16px;">
-                        <div style="display: flex; justify-content: space-between; gap: 12px;">
-                            <strong class="tabular" style="font-size: 1.8rem;" x-text="percentText(server.resources?.disk?.percent)"></strong>
-                            <span class="muted" x-text="server.resources?.disk?.used ? `${formatBytes(server.resources.disk.used)} / ${formatBytes(server.resources.disk.total)}` : '—'"></span>
-                        </div>
-                        <div class="progress thick" style="margin-top: 12px;">
-                            <span class="progress-bar warn" :style="`width: ${meterValue(server.resources?.disk?.percent)}%`"></span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="field col-6">
-                    <label class="field-label">下行带宽</label>
-                    <div class="terminal" style="padding: 16px;">
-                        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px;">
-                            <strong class="tabular" style="font-size: 1.8rem;" x-text="formatSpeed(server.resources?.network?.rx_speed)"></strong>
-                            <span class="muted" x-text="server.resources?.network?.rx_total ? `累计 ${formatBytes(server.resources.network.rx_total)}` : '—'"></span>
-                        </div>
-                        <div class="muted" style="margin-top: 8px;">Download · 实时入口流量</div>
-                    </div>
-                </div>
-                <div class="field col-6">
-                    <label class="field-label">上行带宽</label>
-                    <div class="terminal" style="padding: 16px;">
-                        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px;">
-                            <strong class="tabular" style="font-size: 1.8rem;" x-text="formatSpeed(server.resources?.network?.tx_speed)"></strong>
-                            <span class="muted" x-text="server.resources?.network?.tx_total ? `累计 ${formatBytes(server.resources.network.tx_total)}` : '—'"></span>
-                        </div>
-                        <div class="muted" style="margin-top: 8px;">Upload · 实时出口流量</div>
-                    </div>
-                </div>
-
-                <div class="field col-3">
-                    <label class="field-label">运行时长</label>
-                    <div class="input tabular" style="min-height: 44px;" x-text="formatUptime(server.uptime_seconds)"></div>
-                </div>
-                <div class="field col-3">
-                    <label class="field-label">最后刷新</label>
-                    <div class="input tabular" style="min-height: 44px;" x-text="server.server_time || '—'"></div>
-                </div>
-                <div class="field col-3">
-                    <label class="field-label">Python / PID</label>
-                    <div class="input tabular" style="min-height: 44px;" x-text="server.runtime ? `${server.runtime.python} · ${server.runtime.pid}` : '—'"></div>
-                </div>
-                <div class="field col-3">
-                    <label class="field-label">系统</label>
-                    <div class="input tabular" style="min-height: 44px;" x-text="server.runtime ? `${server.runtime.system} ${server.runtime.release}` : '—'"></div>
-                </div>
-
-                <div class="field col-3">
-                    <label class="field-label">平台用户</label>
-                    <div class="input tabular" style="min-height: 44px;" x-text="`${server.business?.active_users ?? 0}/${server.business?.users ?? 0}`"></div>
-                </div>
-                <div class="field col-3">
-                    <label class="field-label">学习通账号</label>
-                    <div class="input tabular" style="min-height: 44px;" x-text="server.business?.accounts ?? 0"></div>
-                </div>
-                <div class="field col-3">
-                    <label class="field-label">任务队列</label>
-                    <div class="input tabular" style="min-height: 44px;" x-text="`${server.business?.running_tasks ?? 0} 运行 / ${server.business?.pending_tasks ?? 0} 等待`"></div>
-                </div>
-                <div class="field col-3">
-                    <label class="field-label">代理池</label>
-                    <div class="input tabular" style="min-height: 44px;" x-text="`${server.business?.active_proxies ?? 0}/${server.business?.proxies ?? 0}`"></div>
-                </div>
-            </div>
-        </div>
+    <section class="dashboard-metrics" aria-label="关键统计">
+        <article class="metric-card">
+            <div class="metric-icon">{{ icon('users') }}</div><div><div class="metric-title">正常账号</div><div class="metric-number"><span x-text="stats.active_accounts">0</span><small> / <span x-text="stats.accounts">0</span></small></div><div class="metric-foot"><span class="green">●</span> 已连接账号状态</div></div>
+            <span class="metric-corner" x-text="stats.accounts ? `${ratio(stats.active_accounts, stats.accounts)}%` : '暂无账号'"></span>
+        </article>
+        <article class="metric-card">
+            <div class="metric-icon">{{ icon('play') }}</div><div><div class="metric-title">运行任务</div><div class="metric-number" x-text="stats.running">0</div><div class="metric-foot">串行执行 · <span x-text="stats.pending">0</span> 个等待</div></div><span class="metric-corner">一次一个任务</span>
+        </article>
+        <article class="metric-card metric-purple">
+            <div class="metric-icon">{{ icon('check') }}</div><div><div class="metric-title">今日完成</div><div class="metric-number" x-text="stats.today_completed">0</div><div class="metric-foot">本月 <span class="green" x-text="stats.month_completed">0</span> 个任务</div></div><span class="metric-corner" x-text="`总任务 ${stats.total_tasks}`"></span>
+        </article>
+        <article class="metric-card metric-orange">
+            <div class="metric-icon">{{ icon('database') }}</div><div><div class="metric-title">代理可用率</div><div class="metric-number" x-text="stats.proxy_total ? `${ratio(stats.proxy_active, stats.proxy_total)}%` : '—'">—</div><div class="metric-foot">本地代理池状态</div></div><span class="metric-corner" x-text="`${stats.proxy_active} / ${stats.proxy_total}`"></span>
+        </article>
     </section>
-
-    <div class="content-split">
-
-        <section class="panel bracketed">
-            <header class="panel-head">
-                <span><span class="num">№ 03</span> 最近操作</span>
-                <span class="muted" style="font-size: 0.66rem;" x-text="`${recentTasks.length} 条`"></span>
-            </header>
-            <div class="row-list">
-                <div class="row row-head row-recent">
-                    <span>编号</span>
-                    <span>账号</span>
-                    <span>状态</span>
-                    <span>进度</span>
-                    <span></span>
+    <div class="dashboard-columns">
+        <div class="dashboard-left">
+            <section class="dashboard-panel">
+                <header class="dashboard-panel-head"><h2>任务完成趋势</h2><select class="period-select" x-model.number="period" aria-label="趋势时间范围"><option value="7">近 7 天</option><option value="14">近 14 天</option><option value="30">近 30 天</option></select></header>
+                <div class="trend-body">
+                    <div class="trend-chart" role="img" :aria-label="`最近 ${period} 天，完成 ${chartDays().reduce((n,d) => n+d.completed, 0)} 个任务`">
+                        <div class="chart-grid"><template x-for="tick in [4,3,2,1,0]" :key="tick"><div><span x-text="Math.round(chartMax() * tick / 4)"></span></div></template></div>
+                        <div class="chart-bars"><template x-for="(day, index) in chartDays()" :key="day.date"><div class="chart-day" :title="`${day.date} · 新建 ${day.created} · 完成 ${day.completed}`"><div class="chart-bar created" :style="`height:${day.created/chartMax()*100}%`"></div><div class="chart-bar" :style="`height:${day.completed/chartMax()*100}%`"></div><span class="chart-day-label" x-show="period <= 7 || index % Math.ceil(period/7) === 0" x-text="day.date.slice(5).replace('-', '/')"></span></div></template></div>
+                        <div class="chart-empty" x-show="!chartDays().some(d => d.created || d.completed)" x-cloak>这段时间还没有任务记录</div>
+                    </div>
+                    <aside class="trend-summary"><div class="trend-summary-main"><span>今日完成</span><strong x-text="stats.today_completed">0</strong></div><div class="trend-summary-bottom"><div><span>本月累计</span><strong x-text="stats.month_completed">0</strong></div><div><span>期间日均</span><strong x-text="dailyAverage()">0</strong></div></div></aside>
                 </div>
-                <template x-for="t in recentTasks" :key="t.id">
-                    <div class="row row-recent">
-                        <span class="col-id" x-text="`#${String(t.id).padStart(3,'0')}`"></span>
-                        <span x-text="phoneOf(t.account_id)"></span>
-                        <span><span class="tag" :class="tagClass(t.status)" x-text="t.status"></span></span>
-                        <span class="flex-col" style="gap: 4px;">
-                            <span class="progress-ascii" x-text="window.fmtAscii(t.done_chapters, t.total_chapters, 14)"></span>
-                            <span class="muted tabular" style="font-size: 0.7rem;" x-text="`${t.done_chapters}/${t.total_chapters}`"></span>
-                        </span>
-                        <span class="col-actions">
-                            <a class="btn btn-ghost btn-sm" :href="`/tasks/${t.id}`">
-                                <span class="glyph">→</span>
-                            </a>
-                        </span>
-                    </div>
-                </template>
-                <div class="empty" x-show="recentTasks.length === 0">暂无操作 · 启动一个</div>
-            </div>
-        </section>
-
-        <section class="panel bracketed">
-            <header class="panel-head">
-                <span><span class="num">№ 04</span> 账号簿</span>
-                <span class="muted" style="font-size: 0.66rem;" x-text="`${accounts.length} 个`"></span>
-            </header>
-            <div class="row-list">
-                <template x-for="a in accounts" :key="a.id">
-                    <div class="row row-accstat">
-                        <span class="flex-col" style="gap: 2px;">
-                            <strong x-text="a.nickname || a.phone"></strong>
-                            <span class="muted" style="font-size: 0.7rem;" x-text="a.phone"></span>
-                        </span>
-                        <span><span class="tag" :class="acctTag(a.status)" x-text="a.status"></span></span>
-                    </div>
-                </template>
-                <div class="empty" x-show="accounts.length === 0">账号簿空 · 注册首个身份</div>
-            </div>
-            <div class="panel-body" style="border-top: 1px solid var(--line);">
-                <a href="/accounts" class="btn btn-primary btn-block btn-sm">
-                    <span class="glyph">+</span>
-                    <span>管理账号</span>
-                </a>
-            </div>
-        </section>
-
+                <div class="chart-legend"><span><i class="light"></i>新建任务</span><span><i></i>完成任务</span><span style="margin-left:auto">按香港时间统计</span></div>
+            </section>
+            <section class="dashboard-panel">
+                <header class="dashboard-panel-head"><h2>课程任务进度</h2><a href="/tasks" class="text-link">查看更多 {{ icon('chevron') }}</a></header>
+                <div class="course-progress-list"><template x-for="task in progressTasks()" :key="task.id"><a class="course-progress-row" :href="`/tasks/${task.id}`" :title="window.taskResultSummary(task)">
+                    <span class="course-tile">{{ icon('book') }}</span><span style="min-width:0"><span class="course-name" x-text="task.current_course || `课程任务 #${task.id}`"></span><span class="course-account" x-text="`${task.account_name} · 已处理 ${task.done_chapters}/${task.total_chapters} 章节`"></span></span>
+                    <span class="progress"><span class="progress-bar" :class="task.status === 'completed' ? 'success' : 'run'" :style="`width:${pct(task)}%`"></span></span><span class="course-percent" x-text="`${pct(task)}%`"></span><span class="tag" :class="tagClass(task.status)" x-text="window.taskStatusLabel(task.status)"></span>{{ icon('chevron','icon-sm') }}
+                </a></template><div class="empty" x-show="!progressTasks().length">{{ icon('book') }}还没有课程任务<br><a class="text-link" href="/accounts">选择账号，开始创建任务 {{ icon('arrow') }}</a></div></div>
+                <div class="dashboard-notice">进度表示已处理章节；成功、失败、跳过结果请在任务详情中查看。</div>
+            </section>
+            <section class="dashboard-panel">
+                <div class="task-table-tabs"><button type="button" :class="taskTab === 'recent' ? 'active' : ''" @click="taskTab = 'recent'">最近任务</button><button type="button" :class="taskTab === 'pending' ? 'active' : ''" @click="taskTab = 'pending'">任务队列 <em x-text="stats.pending">0</em></button><a class="text-link" href="/tasks" style="margin-left:auto">全部任务 {{ icon('chevron') }}</a></div>
+                <div class="task-table-scroll"><table class="dashboard-table"><thead><tr><th>任务名称</th><th>账号</th><th>课程</th><th>状态</th><th>处理进度</th><th>最后记录</th><th></th></tr></thead><tbody><template x-for="task in tableTasks()" :key="task.id"><tr><td><a :href="`/tasks/${task.id}`" x-text="task.current_chapter || `课程任务 #${task.id}`"></a></td><td x-text="task.account_name"></td><td x-text="task.current_course || '等待课程信息'"></td><td><span class="tag" :class="tagClass(task.status)" x-text="window.taskStatusLabel(task.status)"></span></td><td><span class="table-progress"><span x-text="`${pct(task)}%`"></span><span class="progress"><span class="progress-bar" :style="`width:${pct(task)}%`"></span></span></span></td><td x-text="clock(task.updated_at)"></td><td><a :href="`/tasks/${task.id}`" aria-label="查看任务详情">{{ icon('chevron','icon-sm') }}</a></td></tr></template></tbody></table></div>
+                <div class="empty" x-show="!tableTasks().length" x-text="taskTab === 'pending' ? '队列为空，当前没有等待执行的任务' : '暂无任务记录'"></div>
+            </section>
+        </div>
+        <div class="dashboard-right">
+            <section class="dashboard-panel" id="logs">
+                <header class="dashboard-panel-head"><h2>实时日志</h2><a href="/logs" class="text-link">查看全部 {{ icon('chevron') }}</a></header>
+                <div class="logs-list"><template x-for="log in logs" :key="log.id"><a class="console-log" :href="`/tasks/${log.task_id}#task-logs`" :title="`${log.account_name} · ${log.message}`"><i class="log-dot" :class="log.level"></i><time x-text="clock(log.created_at)"></time><span class="console-log-message" x-text="log.message"></span></a></template><div class="empty" x-show="!logs.length">{{ icon('log') }}暂无运行日志<br>任务开始后，这里将显示最新记录。</div></div>
+                <div class="mini-server"><span><i class="status-dot"></i><span x-text="server.status === 'ok' ? '已连接本地服务' : '正在连接'"></span></span><span x-text="lastRefresh ? `更新于 ${lastRefresh}` : '等待数据'"></span></div>
+            </section>
+            <section class="dashboard-panel">
+                <header class="dashboard-panel-head"><h2>系统模块</h2><span class="tag tag-running">串行运行</span></header>
+                <div class="module-grid">
+                    <a class="module-card" href="/settings#tiku"><span class="module-icon">{{ icon('book') }}</span><div><h3>题库配置</h3><p>管理题库来源<br>匹配与提交策略</p></div>{{ icon('chevron') }}</a>
+                    <a class="module-card" href="/proxies"><span class="module-icon">{{ icon('proxy') }}</span><div><h3>代理池状态</h3><p>代理总数 <span x-text="stats.proxy_total">0</span><br>可用 <span class="green" x-text="stats.proxy_active">0</span></p></div>{{ icon('chevron') }}</a>
+                    <a class="module-card" href="/update"><span class="module-icon">{{ icon('cloud') }}</span><div><h3>在线更新</h3><p>当前版本 v1.0.0<br><span class="green">检查可用更新</span></p></div>{{ icon('chevron') }}</a>
+                    <a class="module-card" href="/settings"><span class="module-icon">{{ icon('settings') }}</span><div><h3>系统设置</h3><p>代理与题库配置<br>账户安全设置</p></div>{{ icon('chevron') }}</a>
+                </div>
+                <div class="dashboard-notice"><span x-text="`需检查任务 ${stats.failed} 个 · 累计完成 ${stats.completed} 个`"></span><br>章节处理成功不代表平台最终认定课程完成。</div>
+            </section>
+        </div>
     </div>
 </div>
-
 <script>
 function dashboard() {
     return {
-        accounts: [],
-        recentTasks: [],
-        stats: {accounts: 0, running: 0, completed: 0, failed: 0},
-        server: {status: 'checking', runtime: {}, resources: {cpu: {}, memory: {}, disk: {}, network: {}}, business: {}},
-        async init() {
-            await this.refresh();
-            setInterval(() => this.refresh(), 2000);
-        },
+        stats: {accounts:0, active_accounts:0, running:0, pending:0, completed:0, today_completed:0, month_completed:0, total_tasks:0, failed:0, proxy_total:0, proxy_active:0},
+        recentTasks: [], activeTasks: [], queueTasks: [], logs: [], trend: [], period:7, taskTab:'recent',
+        server:{status:'checking'}, error:'', lastRefresh:'', timer:null, busy:false, stopped:false,
+        init() { this.refresh(); },
+        destroy() { this.stopped = true; clearTimeout(this.timer); },
         async refresh() {
+            if (this.busy || this.stopped) return;
+            this.busy = true;
+            clearTimeout(this.timer);
             try {
-                const [aRes, tRes, sRes] = await Promise.all([
-                    fetch('/api/accounts').then(r => r.json()),
-                    fetch('/api/tasks?limit=10').then(r => r.json()),
-                    fetch('/api/admin/server-status').then(r => r.json()),
-                ]);
-                this.accounts = aRes;
-                this.recentTasks = tRes;
-                this.server = sRes;
-                this.stats.accounts = aRes.length;
-                this.stats.running = tRes.filter(t => t.status === 'running').length;
-                this.stats.completed = tRes.filter(t => t.status === 'completed').length;
-                this.stats.failed = tRes.filter(t => t.status === 'failed').length;
-            } catch (e) {}
-        },
-        phoneOf(id) {
-            const a = this.accounts.find(x => x.id === id);
-            return a ? (a.nickname || a.phone) : `#${id}`;
-        },
-        tagClass(s) {
-            return ({
-                pending:   'tag-pending',
-                running:   'tag-running',
-                completed: 'tag-success',
-                failed:    'tag-fail',
-                cancelled: 'tag-cancel',
-            })[s] || 'tag-pending';
-        },
-        acctTag(s) {
-            return ({
-                idle:    'tag-pending',
-                running: 'tag-running',
-                error:   'tag-fail',
-            })[s] || 'tag-pending';
-        },
-        formatBytes(value) {
-            if (!value) return '—';
-            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-            let n = Number(value);
-            let i = 0;
-            while (n >= 1024 && i < units.length - 1) {
-                n /= 1024;
-                i += 1;
+                const response = await fetch('/api/admin/server-status');
+                if (response.status === 401) { location.href = '/admin/login'; return; }
+                if (!response.ok) throw new Error('status');
+                const data = await response.json();
+                this.server = data;
+                this.stats = {...this.stats, ...data.dashboard};
+                this.recentTasks = data.dashboard.recent_tasks || [];
+                this.activeTasks = data.dashboard.active_tasks || [];
+                this.queueTasks = data.dashboard.queue_tasks || [];
+                this.logs = data.dashboard.logs || [];
+                this.trend = data.dashboard.trend || [];
+                this.error = '';
+                this.lastRefresh = new Date().toLocaleTimeString('zh-CN', {timeZone:'Asia/Hong_Kong', hour12:false});
+                window.dispatchEvent(new CustomEvent('console-resources', {detail:data.resources || {}}));
+                window.dispatchEvent(new CustomEvent('console-status', {detail:true}));
+            } catch (_) {
+                this.error = '暂时无法刷新，正在显示上次读取的数据。';
+                window.dispatchEvent(new CustomEvent('console-status', {detail:false}));
+            } finally {
+                this.busy = false;
+                if (!this.stopped) this.timer = setTimeout(() => this.refresh(), 5000);
             }
-            return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
         },
-        formatSpeed(value) {
-            if (value === null || value === undefined) return '采样中';
-            return `${this.formatBytes(value)}/s`;
-        },
-        percentText(value) {
-            if (value === null || value === undefined) return '采样中';
-            return `${Number(value).toFixed(1)}%`;
-        },
-        meterValue(value) {
-            if (value === null || value === undefined) return 0;
-            return Math.max(0, Math.min(100, Number(value)));
-        },
-        formatUptime(seconds) {
-            if (!seconds && seconds !== 0) return '—';
-            const d = Math.floor(seconds / 86400);
-            const h = Math.floor((seconds % 86400) / 3600);
-            const m = Math.floor((seconds % 3600) / 60);
-            return d > 0 ? `${d}天 ${h}时 ${m}分` : `${h}时 ${m}分`;
-        },
+        greeting() { const hour = Number(new Date().toLocaleString('en-GB', {timeZone:'Asia/Hong_Kong', hour:'2-digit', hour12:false})); return hour < 12 ? '上午好' : hour < 18 ? '下午好' : '晚上好'; },
+        dateText() { return new Date().toLocaleDateString('zh-CN', {timeZone:'Asia/Hong_Kong', year:'numeric', month:'long', day:'numeric'}); },
+        ratio(part, total) { return total ? (part/total*100).toFixed(1) : '0.0'; },
+        pct(task) { return Math.max(0, Math.min(100, window.fmtPct(task.done_chapters, task.total_chapters))); },
+        clock(value) { return value ? new Date(value).toLocaleTimeString('zh-CN', {timeZone:'Asia/Hong_Kong', hour12:false}) : '—'; },
+        chartDays() { return this.trend.slice(-this.period); },
+        chartMax() { return Math.max(4, ...this.chartDays().flatMap(day => [day.created, day.completed])); },
+        dailyAverage() { return (this.chartDays().reduce((sum, day) => sum + day.completed, 0) / this.period).toFixed(1); },
+        progressTasks() { const ids = new Set(this.activeTasks.map(t => t.id)); return [...this.activeTasks, ...this.recentTasks.filter(t => !ids.has(t.id))].slice(0,4); },
+        tableTasks() { return (this.taskTab === 'pending' ? this.queueTasks : this.recentTasks).slice(0,5); },
+        tagClass(status) { return ({pending:'tag-pending',running:'tag-running',completed:'tag-success',partial:'tag-warn',failed:'tag-fail',cancelled:'tag-cancel'})[status] || 'tag-pending'; },
     };
 }
 </script>

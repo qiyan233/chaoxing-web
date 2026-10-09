@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Courses · {{ app_name }}{% endblock %}
 {% block content %}
-<div x-data="coursesPage({{ account_id }})" x-init="init()">
+<div x-data="coursesPage({{ account_id }})">
+    <div class="error-banner danger" x-show="actionError" x-text="actionError" x-cloak role="alert"></div>
 
     <header class="page-head">
         <div>
@@ -85,7 +86,7 @@
                         <div class="error-banner" style="border-color: var(--line); background: rgba(94,234,212,0.04); color: var(--bone-dim);">
                             <span class="muted upcase">目标</span><br>
                             <span class="serif" style="font-size: 1.05rem; color: var(--bone);"
-                                  x-text="`${selected.length} 个课程已入队`"></span>
+                                  x-text="`已选择 ${selected.length} 个课程，提交后进入队列`"></span>
                             <span class="muted" style="font-size: 0.75rem;"
                                   x-show="selected.length === courses.length"> · 全部课程</span>
                         </div>
@@ -128,23 +129,17 @@
                                 <label class="field-label">视频倍速 <span class="muted">1.0–2.0</span></label>
                                 <input type="number" class="input tabular" min="1" max="2" step="0.1" x-model.number="launch.speed">
                             </div>
-                            <div class="field col-6">
-                                <label class="field-label">并发任务 <span class="muted">1–16</span></label>
-                                <input type="number" class="input tabular" min="1" max="16" x-model.number="launch.jobs">
-                            </div>
                         </div>
 
-                        <div class="field" x-show="launch.mode === 'quick'">
-                            <label class="field-label">并发任务 <span class="muted">1–16</span></label>
-                            <input type="number" class="input tabular" min="1" max="16" x-model.number="launch.jobs">
+                        <div class="field">
+                            <label class="field-label">执行方式</label>
+                            <div class="field-hint">串行执行：一次只处理一个账号、一个任务点；其他账号的任务按提交顺序等待。</div>
                         </div>
 
                         <div class="field">
                             <label class="field-label">遇到锁定章节</label>
                             <select class="select" x-model="launch.notopen_action">
-                                <option value="retry">重试 · 重新尝试前一章节</option>
                                 <option value="continue">跳过 · 跳过并继续下一个</option>
-                                <option value="ask">询问 · 等同于重试</option>
                             </select>
                         </div>
 
@@ -170,7 +165,7 @@
 
 <script>
 function coursesPage(accountId) {
-    return {
+    return actionPage({
         accountId,
         account: {},
         courses: [],
@@ -180,18 +175,19 @@ function coursesPage(accountId) {
         error: '',
         launching: false,
         submitting: false,
-        launch: {speed: 1.0, jobs: 4, notopen_action: 'retry', mode: 'normal'},
+        launch: {speed: 1.0, notopen_action: 'continue', mode: 'normal'},
         async init() {
-            const accs = await fetch('/api/accounts').then(r => r.json()).catch(() => []);
+            const accs = await apiFetch('/api/accounts').then(r => r.json());
             this.account = accs.find(a => a.id === this.accountId) || {};
             await this.refresh(false);
         },
         async refresh(force) {
             this.loading = true;
+            this.selected = [];
             this.error = '';
             try {
                 const url = `/api/accounts/${this.accountId}/courses${force ? '?refresh=true' : ''}`;
-                const res = await fetch(url);
+                const res = await apiFetch(url);
                 if (!res.ok) {
                     const j = await res.json();
                     this.error = j.detail || '加载失败';
@@ -222,8 +218,8 @@ function coursesPage(accountId) {
         toggleAll(checked) {
             this.selected = checked ? this.courses.map(c => c._uid) : [];
         },
-        hasSelection() { return this.selected.length > 0; },
-        openLaunch() { this.launching = true; },
+        hasSelection() { return this.courses.some(c => this.selected.includes(c._uid)); },
+        openLaunch() { if (this.hasSelection() && !this.loading) this.launching = true; },
         courseUid(c, idx) {
             const courseId = c.courseId || c.courseid || c.course_id || c.id || 'unknown-course';
             const clazzId = c.clazzId || c.clazzid || c.classId || c.classid || 'unknown-class';
@@ -240,31 +236,25 @@ function coursesPage(accountId) {
             return c.teacher || c.teacherName || c.teachers || '';
         },
         async submitLaunch() {
+            if (!this.hasSelection()) { showToast('请先选择有效课程', 'warning'); return; }
             this.submitting = true;
             try {
                 const payload = {
                     account_id: this.accountId,
-                    course_ids: this.selected.length === this.courses.length
-                        ? null
-                        : [...new Set(
-                            this.courses
-                                .filter(c => this.selected.includes(c._uid))
-                                .map(c => this.courseKey(c))
-                                .filter(Boolean)
-                          )],
+                    course_ids: [...new Set(this.courses.filter(c => this.selected.includes(c._uid)).map(c => this.courseKey(c)))],
                     speed: this.launch.speed,
-                    jobs: this.launch.jobs,
+                    jobs: 1,
                     notopen_action: this.launch.notopen_action,
                     mode: this.launch.mode,
                 };
-                const res = await fetch('/api/tasks', {
+                const res = await apiFetch('/api/tasks', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(payload),
                 });
                 const j = await res.json();
                 if (res.ok) {
-                    showToast('operation dispatched', 'success');
+                    showToast('任务已创建，按顺序排队执行', 'success');
                     location.href = `{{ '/user/tasks' if (user_scope|default(false)) else '/tasks' }}/${j.id}`;
                 } else {
                     showToast(j.detail || '启动失败', 'danger');
@@ -273,7 +263,7 @@ function coursesPage(accountId) {
                 this.submitting = false;
             }
         },
-    };
+    });
 }
 </script>
 {% endblock %}

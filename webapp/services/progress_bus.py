@@ -51,7 +51,7 @@ class ProgressBus:
             while True:
                 event = await queue.get()
                 yield event
-                if event.get("type") in {"task_done", "task_failed", "task_cancelled"}:
+                if event.get("type") in {"task_done", "task_partial", "task_failed", "task_cancelled"}:
                     break
         finally:
             await self.unsubscribe(task_id, queue)

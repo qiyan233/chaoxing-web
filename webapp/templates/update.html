@@ -2,6 +2,7 @@
 {% block title %}更新 · {{ app_name }}{% endblock %}
 {% block content %}
 <div x-data="updatePage()" x-init="checkUpdate(false)">
+    <div class="error-banner danger" x-show="actionError" x-text="actionError" x-cloak role="alert"></div>
     <header class="page-head">
         <div>
             <div class="page-eyebrow">// update · 06</div>
@@ -33,14 +34,14 @@
                 <div class="field col-3">
                     <label class="field-label">本地改动</label>
                     <div class="input" style="min-height: 44px;">
-                        <span class="tag" :class="update.dirty ? 'tag-fail' : 'tag-success'" x-text="update.dirty ? 'dirty' : 'clean'"></span>
+                        <span class="tag" :class="update.dirty ? 'tag-fail' : 'tag-info'" x-text="typeof update.dirty !== 'boolean' ? '—' : (update.dirty ? '有本地改动' : '无本地改动')"></span>
                     </div>
                 </div>
                 <div class="field col-3">
                     <label class="field-label">状态</label>
                     <div class="input" style="min-height: 44px;">
                         <span class="tag" :class="update.has_update ? 'tag-warn' : 'tag-success'"
-                              x-text="update.has_update ? '发现更新' : '已是最新'"></span>
+                              x-text="updateChecking ? '检查中' : update.error ? '检查失败' : !updateLoaded ? '尚未检查' : !update.supported ? '不支持在线更新' : update.has_update ? '发现更新' : '已是最新'"></span>
                     </div>
                 </div>
 
@@ -76,7 +77,7 @@
                         <span x-show="!updateChecking">检查更新</span>
                         <span x-show="updateChecking" class="spinner"></span>
                     </button>
-                    <button type="button" class="btn btn-primary" @click="applyUpdate" :disabled="updateApplying || !update.has_update || update.dirty">
+                    <button type="button" class="btn btn-primary" @click="applyUpdate" :disabled="updateApplying || updateChecking || !updateLoaded || update.error || !update.supported || !update.has_update || update.dirty">
                         <span x-show="!updateApplying">在线更新</span>
                         <span x-show="updateApplying" class="spinner"></span>
                         <span x-show="updateApplying">更新中…</span>
@@ -92,8 +93,9 @@
 
 <script>
 function updatePage() {
-    return {
+    return actionPage({
         update: {},
+        updateLoaded: false,
         updateOutput: '',
         updateChecking: false,
         updateApplying: false,
@@ -101,9 +103,10 @@ function updatePage() {
             if (this.updateChecking) return;
             this.updateChecking = true;
             try {
-                const res = await fetch('/api/update/status');
+                const res = await apiFetch('/api/update/status');
                 const j = await res.json();
                 this.update = j;
+                this.updateLoaded = true;
                 if (toast) {
                     showToast(j.error || (j.has_update ? '发现新版本' : '当前已是最新版本'), j.error ? 'danger' : (j.has_update ? 'warning' : 'success'));
                 }
@@ -116,7 +119,7 @@ function updatePage() {
             this.updateApplying = true;
             this.updateOutput = '';
             try {
-                const res = await fetch('/api/update/apply', {method: 'POST'});
+                const res = await apiFetch('/api/update/apply', {method: 'POST'});
                 const j = await res.json();
                 this.updateOutput = [j.stdout, j.stderr].filter(Boolean).join('\n');
                 showToast(j.msg || (res.ok ? '更新完成' : '更新失败'), (res.ok && j.status) ? 'success' : 'danger');
@@ -127,12 +130,12 @@ function updatePage() {
         },
         async restartService() {
             if (!confirm('确定重启服务？页面会短暂断开，几秒后刷新即可。')) return;
-            const res = await fetch('/api/update/restart', {method: 'POST'});
+            const res = await apiFetch('/api/update/restart', {method: 'POST'});
             const j = await res.json();
             showToast(j.msg || '正在重启', res.ok ? 'success' : 'danger');
-            setTimeout(() => window.location.reload(), 5000);
+            if (res.ok && j.status) setTimeout(() => window.location.reload(), 5000);
         },
-    };
+    });
 }
 </script>
 {% endblock %}

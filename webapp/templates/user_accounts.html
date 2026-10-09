@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}我的学习通账号 · {{ app_name }}{% endblock %}
 {% block content %}
-<div x-data="userAccountsPage()" x-init="init()">
+<div x-data="userAccountsPage()">
+    <div class="error-banner danger" x-show="actionError" x-text="actionError" x-cloak role="alert"></div>
     <header class="page-head">
         <div>
             <div class="page-eyebrow">// MY ACCOUNTS · 02</div>
@@ -102,14 +103,14 @@
 
 <script>
 function userAccountsPage() {
-    return {
+    return actionPage({
         accounts: [],
         form: {phone: '', password: '', nickname: '', verify_login: true},
         creating: false,
         submitting: false,
         async init() { await this.refresh(); },
         async refresh() {
-            this.accounts = await fetch('/api/accounts').then(r => r.json()).catch(() => []);
+            this.accounts = await apiFetch('/api/accounts').then(r => r.json());
         },
         openCreate() {
             this.form = {phone: '', password: '', nickname: '', verify_login: true};
@@ -118,7 +119,7 @@ function userAccountsPage() {
         async submitCreate() {
             this.submitting = true;
             try {
-                const res = await fetch('/api/accounts', {
+                const res = await apiFetch('/api/accounts', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(this.form),
@@ -137,21 +138,21 @@ function userAccountsPage() {
         },
         async relogin(a) {
             showToast(`正在检测 ${a.phone} …`, 'info');
-            const res = await fetch(`/api/accounts/${a.id}/login`, {method: 'POST'});
+            const res = await apiFetch(`/api/accounts/${a.id}/login`, {method: 'POST'});
             const j = await res.json().catch(() => ({}));
             showToast(j.msg || '检测完成', j.status ? 'success' : 'danger');
             await this.refresh();
         },
         async remove(a) {
             if (!confirm(`确定删除学习通账号 ${a.phone}？`)) return;
-            const res = await fetch(`/api/accounts/${a.id}`, {method: 'DELETE'});
+            const res = await apiFetch(`/api/accounts/${a.id}`, {method: 'DELETE'});
             showToast(res.ok ? '已删除' : '删除失败', res.ok ? 'success' : 'danger');
             await this.refresh();
         },
         acctTag(s) {
             return ({idle: 'tag-pending', running: 'tag-running', error: 'tag-fail'})[s] || 'tag-pending';
         },
-    };
+    });
 }
 </script>
 {% endblock %}

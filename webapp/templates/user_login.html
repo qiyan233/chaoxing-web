@@ -2,16 +2,17 @@
 {% block title %}用户登录 · {{ app_name }}{% endblock %}
 {% block auth_content %}
 <div class="auth-card">
-    <div class="auth-eyebrow">USER PORTAL</div>
-    <h1 class="auth-title">登录你的<br>学习面板。</h1>
+    <div class="brand-logo" style="margin-bottom:20px">{{ icon('book') }}</div>
+    <div class="auth-eyebrow">超星学习通 · 用户入口</div>
+    <h1 class="auth-title">登录你的学习面板</h1>
     <p class="auth-sub">
         使用管理员创建的平台账号登录。登录后，你可以添加自己的学习通账号。
     </p>
 
     <form class="auth-form" x-data="{busy:false}" x-on:submit.prevent="
-        busy = true;
         const fd = new FormData($event.target);
-        fetch('/api/user/login', {
+        busy = true;
+        apiFetch('/api/user/login', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({username: fd.get('username'), password: fd.get('password')})
@@ -20,6 +21,7 @@
               if (ok) location.href = '/user/dashboard';
               else showToast(j.detail || '登录失败', 'danger');
           })
+          .catch(error => showToast(error.message, 'danger'))
           .finally(() => busy = false);
     ">
         <div class="field">

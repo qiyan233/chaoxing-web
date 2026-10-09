@@ -52,12 +52,12 @@ class ProxyConfig(BaseModel):
 
 
 class RuntimeConfig(BaseModel):
-    """任务运行时配置。"""
+    """兼容旧接口的运行配置；学习任务固定串行。"""
     max_concurrent_accounts: int = Field(
         default=1,
         ge=1,
-        le=16,
-        description="最大同时刷课账号数；修改后需重启服务生效",
+        le=1,
+        description="固定为 1，所有学习任务串行执行",
     )
 
 

@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from webapp.config import APP_NAME, TEMPLATES_DIR
-from webapp.deps import get_db_session, is_admin_initialized
+from webapp.deps import get_db_session, is_admin_initialized, is_admin_session
 from webapp.models.account import ChaoxingAccount
 from webapp.models.task import StudyTask, TaskStatus
 from webapp.models.user import PlatformUser
@@ -17,13 +17,13 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 def _ctx(request: Request, **extra) -> dict:
-    role = request.session.get("role") or ("admin" if request.session.get("user") == "admin" else None)
+    role = request.session.get("role", "admin" if is_admin_session(request) else None)
     ctx = {
         "request": request,
         "app_name": APP_NAME,
         "user": request.session.get("user"),
         "role": role,
-        "is_admin": role == "admin" or request.session.get("user") == "admin",
+        "is_admin": is_admin_session(request),
         "authenticated": request.session.get("authenticated", False),
     }
     ctx.update(extra)
@@ -51,9 +51,7 @@ async def _landing_stats(db: AsyncSession) -> dict:
         select(func.count(StudyTask.id)).where(StudyTask.status == TaskStatus.COMPLETED.value)
     )
     completed_chapters = await db.scalar(
-        select(func.coalesce(func.sum(StudyTask.done_chapters), 0)).where(
-            StudyTask.status == TaskStatus.COMPLETED.value
-        )
+        select(func.coalesce(func.sum(StudyTask.succeeded_chapters), 0))
     )
     return {
         "platform_total": platform_total or 0,
@@ -109,7 +107,7 @@ def _require_admin_page(request: Request) -> RedirectResponse | None:
     redirect = _require_html_login(request)
     if redirect:
         return redirect
-    if request.session.get("role") != "admin" and request.session.get("user") != "admin":
+    if not is_admin_session(request):
         return RedirectResponse("/user/dashboard", status_code=302)
     return None
 
@@ -152,6 +150,26 @@ async def user_tasks_page(request: Request):
     return _template(request, "user_tasks.html", page="user_tasks")
 
 
+@router.get("/user/tasks/new", response_class=HTMLResponse)
+async def user_new_task_page(request: Request):
+    redirect = _require_html_login(request)
+    if redirect:
+        return redirect
+    if request.session.get("role") != "user":
+        return RedirectResponse("/tasks/new", status_code=302)
+    return _template(request, "new_task.html", page="user_tasks", user_scope=True)
+
+
+@router.get("/user/logs", response_class=HTMLResponse)
+async def user_logs_page(request: Request):
+    redirect = _require_html_login(request)
+    if redirect:
+        return redirect
+    if request.session.get("role") != "user":
+        return RedirectResponse("/logs", status_code=302)
+    return _template(request, "logs.html", page="logs", user_scope=True)
+
+
 @router.get("/user/tasks/{task_id}", response_class=HTMLResponse)
 async def user_task_detail_page(request: Request, task_id: int):
     redirect = _require_html_login(request)
@@ -192,6 +210,22 @@ async def tasks_page(request: Request):
     if redirect:
         return redirect
     return _template(request, "tasks.html", page="tasks")
+
+
+@router.get("/tasks/new", response_class=HTMLResponse)
+async def new_task_page(request: Request):
+    redirect = _require_admin_page(request)
+    if redirect:
+        return redirect
+    return _template(request, "new_task.html", page="tasks")
+
+
+@router.get("/logs", response_class=HTMLResponse)
+async def logs_page(request: Request):
+    redirect = _require_admin_page(request)
+    if redirect:
+        return redirect
+    return _template(request, "logs.html", page="logs")
 
 
 @router.get("/tasks/{task_id}", response_class=HTMLResponse)

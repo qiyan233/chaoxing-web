@@ -8,20 +8,21 @@
         选择一个强密码。它保护存储在本机的所有账号、Cookie 和题库。
     </p>
 
-    <form class="auth-form" x-data x-on:submit.prevent="
+    <form class="auth-form" x-data="{busy:false}" x-on:submit.prevent="
         const fd = new FormData($event.target);
         const pw = fd.get('password');
         const cf = fd.get('confirm');
         if (pw !== cf) { showToast('两次密码不一致', 'danger'); return; }
         if (pw.length < 4) { showToast('密码至少 4 位', 'danger'); return; }
-        fetch('/api/setup', {
+        busy = true;
+        apiFetch('/api/setup', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({new_password: pw})
         }).then(r => r.json().then(j => ({ok: r.ok, j})))
           .then(({ok, j}) => {
               if (ok) location.href = '/dashboard';
               else showToast(j.detail || '初始化失败', 'danger');
-          });
+          }).catch(error => showToast(error.message, 'danger')).finally(() => busy = false);
     ">
         <div class="field">
             <label class="field-label">新密码</label>
@@ -31,7 +32,7 @@
             <label class="field-label">确认密码</label>
             <input type="password" class="input" name="confirm" required minlength="4">
         </div>
-        <button type="submit" class="btn btn-primary btn-block">
+        <button type="submit" class="btn btn-primary btn-block" :disabled="busy">
             <span>完成初始化</span>
             <span class="glyph">→</span>
         </button>

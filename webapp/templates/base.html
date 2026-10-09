@@ -1,149 +1,105 @@
+{% macro icon(name, extra='') -%}<svg class="icon {{ extra }}" aria-hidden="true"><use href="/static/img/console-icons.svg#{{ name }}"></use></svg>{%- endmacro %}
 <!doctype html>
 <html lang="zh-CN">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}{{ app_name }}{% endblock %}</title>
-
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;600;700&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
-    <script>
-      (function initTheme() {
-        try {
-          const saved = localStorage.getItem('chaoxing-theme');
-          const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-          if (saved === 'dark' || (!saved && prefersDark)) {
-            document.documentElement.classList.add('theme-dark');
-          }
-        } catch (_) {}
-      })();
-    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>try { if (localStorage.getItem('chaoxing-theme') === 'dark') document.documentElement.classList.add('theme-dark'); } catch (_) {}</script>
     <link rel="stylesheet" href="/static/css/custom.css?v=study-atelier-user-panel-20260510">
+    <link rel="stylesheet" href="/static/css/console.css?v=blue-console-20261009">
 </head>
 <body>
 {% if authenticated %}
-<div class="shell">
-    <aside class="sidebar">
-        <div class="brand">
-            <div class="brand-mark">Chaoxing Studio</div>
-            <div class="brand-name">书院<br>控制台</div>
-            <div class="brand-sub">课程、账号与任务的本地中枢</div>
-        </div>
-
-        <nav class="nav-section">
-            <div class="nav-label">// 控制面板</div>
+{% set panel_home = '/dashboard' if is_admin else '/user/dashboard' %}
+{% set account_home = '/accounts' if is_admin else '/user/accounts' %}
+{% set task_home = '/tasks' if is_admin else '/user/tasks' %}
+{% set page_titles = {'dashboard':'仪表盘','user_dashboard':'我的仪表盘','accounts':'学习通账号','user_accounts':'学习通账号','users':'用户管理','tasks':'课程任务','user_tasks':'我的任务','proxies':'代理池','settings':'系统设置','update':'在线更新','logs':'任务日志'} %}
+<div class="shell" x-data="consoleShell()" :class="{'sidebar-open': navOpen}" @keydown.escape.window="navOpen = false; profileOpen = false" @console-resources.window="resources = $event.detail" @console-status.window="online = $event.detail">
+    <aside class="sidebar" aria-label="主导航">
+        <a class="brand" href="{{ panel_home }}">
+            <span class="brand-logo">{{ icon('book') }}</span>
+            <span><span class="brand-name">超星学习通</span><span class="brand-sub" style="display:block">自动化平台</span></span>
+        </a>
+        <nav class="nav-section" aria-label="控制台导航">
+            <a class="nav-link {% if page in ['dashboard','user_dashboard'] %}active{% endif %}" href="{{ panel_home }}">{{ icon('dashboard') }}<span>仪表盘</span></a>
+            <a class="nav-link {% if page in ['accounts','user_accounts'] %}active{% endif %}" href="{{ account_home }}">{{ icon('user') }}<span>学习通账号</span></a>
+            {% if is_admin %}<a class="nav-link {% if page == 'users' %}active{% endif %}" href="/users">{{ icon('users') }}<span>用户管理</span></a>{% endif %}
+            <a class="nav-link {% if page in ['tasks','user_tasks'] %}active{% endif %}" href="{{ task_home }}">{{ icon('task') }}<span>课程任务</span></a>
+            <a class="nav-link {% if page == 'logs' %}active{% endif %}" href="{{ '/logs' if is_admin else '/user/logs' }}">{{ icon('log') }}<span>任务日志</span></a>
             {% if is_admin %}
-                <a class="nav-link {% if page == 'dashboard' %}active{% endif %}" href="/dashboard">
-                    <span>总览</span>
-                    <span class="nav-num">01</span>
-                </a>
-                <a class="nav-link {% if page == 'users' %}active{% endif %}" href="/users">
-                    <span>用户</span>
-                    <span class="nav-num">02</span>
-                </a>
-                <a class="nav-link {% if page == 'accounts' %}active{% endif %}" href="/accounts">
-                    <span>账号</span>
-                    <span class="nav-num">03</span>
-                </a>
-                <a class="nav-link {% if page == 'tasks' %}active{% endif %}" href="/tasks">
-                    <span>操作</span>
-                    <span class="nav-num">04</span>
-                </a>
-                <a class="nav-link {% if page == 'proxies' %}active{% endif %}" href="/proxies">
-                    <span>代理池</span>
-                    <span class="nav-num">05</span>
-                </a>
-                <a class="nav-link {% if page == 'settings' %}active{% endif %}" href="/settings">
-                    <span>配置</span>
-                    <span class="nav-num">06</span>
-                </a>
-                <a class="nav-link {% if page == 'update' %}active{% endif %}" href="/update">
-                    <span>更新</span>
-                    <span class="nav-num">07</span>
-                </a>
-            {% else %}
-                <a class="nav-link {% if page == 'user_dashboard' %}active{% endif %}" href="/user/dashboard">
-                    <span>我的面板</span>
-                    <span class="nav-num">01</span>
-                </a>
-                <a class="nav-link {% if page == 'user_accounts' %}active{% endif %}" href="/user/accounts">
-                    <span>学习通账号</span>
-                    <span class="nav-num">02</span>
-                </a>
-                <a class="nav-link {% if page == 'user_tasks' %}active{% endif %}" href="/user/tasks">
-                    <span>我的任务</span>
-                    <span class="nav-num">03</span>
-                </a>
+            <a class="nav-link" href="/settings#tiku">{{ icon('book') }}<span>题库配置</span></a>
+            <a class="nav-link {% if page == 'proxies' %}active{% endif %}" href="/proxies">{{ icon('proxy') }}<span>代理池</span></a>
+            <a class="nav-link {% if page == 'update' %}active{% endif %}" href="/update">{{ icon('cloud') }}<span>在线更新</span></a>
+            <a class="nav-link {% if page == 'settings' %}active{% endif %}" href="/settings">{{ icon('settings') }}<span>系统设置</span></a>
             {% endif %}
         </nav>
-
         <div class="sidebar-foot">
-            <hr class="divider-dashed">
-            <div class="foot-line">
-                <span class="foot-key">会话</span>
-                <span style="color: var(--phos);">● 在线</span>
-            </div>
-            <div class="foot-line">
-                <span class="foot-key">时间</span>
-                <span class="tabular" id="clock">—</span>
-            </div>
-            <button class="btn btn-ghost btn-block btn-sm theme-toggle" type="button" onclick="toggleTheme(); return false;">
-                <span class="theme-icon">☾</span>
-                <span id="theme-label">夜晚模式</span>
-            </button>
-            <button class="btn btn-ghost btn-block btn-sm" style="margin-top: 8px;" onclick="logout(); return false;">
-                <span class="glyph">↗</span>
-                <span>登出</span>
-            </button>
+            {% if is_admin %}<a class="serial-banner" href="/settings#runtime">{{ icon('check') }}<span>串行执行模式</span>{{ icon('chevron','icon-sm') }}</a>{% else %}<div class="serial-banner">{{ icon('check') }}<span>串行执行模式</span></div>{% endif %}
+            {% if is_admin %}
+            {% for resource, label in [('cpu','CPU'), ('memory','内存'), ('disk','存储')] %}
+            <div class="resource-meter"><span>{{ label }}</span><span class="resource-track"><i :style="`width:${Math.max(0, Math.min(100, resources.{{ resource }}?.percent || 0))}%`"></i></span><span x-text="resourceText(resources.{{ resource }}?.percent)">—</span></div>
+            {% endfor %}
+            {% endif %}
+            <div class="sidebar-version"><span>v1.0.0</span><span><i class="status-dot" :style="online ? '' : 'background:#b2bed2'"></i><span x-text="online ? '服务运行中' : '连接检查中'">服务运行中</span></span></div>
         </div>
     </aside>
-
+    <button class="sidebar-scrim" type="button" @click="navOpen = false" aria-label="关闭导航"></button>
     <main class="main">
-        {% block content %}{% endblock %}
+        <header class="console-topbar">
+            <button class="icon-button" type="button" @click="navOpen = !navOpen" :aria-expanded="navOpen" aria-label="切换导航">{{ icon('menu') }}</button>
+            <div class="topbar-heading"><h1>{{ page_titles.get(page, '控制台') }}</h1><p>欢迎使用超星学习通，实时掌握任务运行状态</p></div>
+            <form class="topbar-search" action="{{ task_home }}" method="get" role="search">
+                {{ icon('search') }}<input id="console-search" type="search" name="q" placeholder="搜索账号、课程或任务…" aria-label="搜索账号、课程或任务"><kbd>⌘ K</kbd>
+            </form>
+            <a class="btn btn-primary topbar-new" href="{{ task_home }}/new">{{ icon('plus','icon-sm') }}新建任务</a>
+            <button class="theme-switch" type="button" onclick="toggleTheme()" aria-label="切换深浅主题">{{ icon('sun') }}<span class="moon-disc">{{ icon('moon') }}</span></button>
+            <a class="icon-button topbar-bell" href="{{ '/logs' if is_admin else '/user/logs' }}" aria-label="查看任务日志" title="查看任务日志">{{ icon('log') }}</a>
+            <div class="topbar-profile" @click.outside="profileOpen = false">
+                <button class="profile-button" type="button" @click="profileOpen = !profileOpen" :aria-expanded="profileOpen" aria-label="账户菜单">
+                    <span class="avatar">{{ icon('user') }}</span><span><strong>{{ user }}</strong><small>{{ '系统管理员' if is_admin else '平台用户' }}</small></span>{{ icon('chevron','icon-sm') }}
+                </button>
+                <div class="profile-menu" x-show="profileOpen" x-cloak>
+                    {% if is_admin %}<a href="/settings#pwd">{{ icon('settings','icon-sm') }}账户设置</a>{% endif %}
+                    <button type="button" onclick="logout()">{{ icon('logout','icon-sm') }}退出登录</button>
+                </div>
+            </div>
+        </header>
+        <div class="page-content">{% block content %}{% endblock %}</div>
     </main>
 </div>
 {% else %}
-<div class="auth-frame">
-    {% block auth_content %}{% endblock %}
-</div>
+<div class="auth-frame">{% block auth_content %}{% endblock %}</div>
 {% endif %}
-
 <div class="toast-stack"></div>
-
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
-<script src="/static/js/app.js?v=study-atelier-20260504"></script>
+<script src="/static/js/app.js?v=task-results-20261009"></script>
 <script>
-  (function tickClock() {
-    const el = document.getElementById('clock');
-    if (!el) return;
-    const update = () => {
-      const d = new Date();
-      const pad = n => String(n).padStart(2, '0');
-      el.textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+function consoleShell() {
+    return {
+        navOpen: false, profileOpen: false, resources: {}, online: true,
+        resourceText(value) { return value == null ? '—' : `${Math.round(value)}%`; },
+        async init() {
+            {% if is_admin and page != 'dashboard' %}
+            try { const response = await apiFetch('/api/admin/server-status'); if (response.ok) { const data = await response.json(); this.resources = data.resources || {}; } } catch (_) { this.online = false; }
+            {% endif %}
+        },
     };
-    update();
-    setInterval(update, 1000);
-  })();
-
-  function syncThemeToggle() {
-    const isDark = document.documentElement.classList.contains('theme-dark');
-    const label = document.getElementById('theme-label');
-    const icon = document.querySelector('.theme-icon');
-    if (label) label.textContent = isDark ? '白天模式' : '夜晚模式';
-    if (icon) icon.textContent = isDark ? '☀' : '☾';
-  }
-
-  function toggleTheme() {
-    const root = document.documentElement;
-    const nextDark = !root.classList.contains('theme-dark');
-    root.classList.toggle('theme-dark', nextDark);
+}
+function toggleTheme() {
+    const nextDark = !document.documentElement.classList.contains('theme-dark');
+    document.documentElement.classList.toggle('theme-dark', nextDark);
     try { localStorage.setItem('chaoxing-theme', nextDark ? 'dark' : 'light'); } catch (_) {}
-    syncThemeToggle();
-  }
-
-  syncThemeToggle();
+}
+document.addEventListener('keydown', event => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        const search = document.getElementById('console-search');
+        if (search) { event.preventDefault(); search.focus(); }
+    }
+});
 </script>
 {% block extra_scripts %}{% endblock %}
 </body>

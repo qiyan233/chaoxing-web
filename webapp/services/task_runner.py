@@ -3,7 +3,7 @@
 
 职责：
 - 接收启动请求 → 数据库登记 → 提交到 APScheduler
-- 每个任务一个独立线程，绑定 SessionContext
+- 所有学习任务在一个工作线程中排队执行，绑定 SessionContext
 - 进度事件推 ProgressBus
 - 日志写入 task_logs 表
 - 支持取消（threading.Event）
@@ -42,20 +42,8 @@ from webapp.services.quick_flow import quick_process_chapter
 
 
 def _load_max_concurrent_accounts() -> int:
-    """读取最大同时刷课账号数：数据库运行配置优先，其次环境变量默认值。"""
-    from webapp.config import MAX_CONCURRENT_ACCOUNTS
-
-    value = MAX_CONCURRENT_ACCOUNTS
-    try:
-        with SyncSessionLocal() as db:
-            setting = db.get(AppSetting, AppSetting.KEY_RUNTIME_CONFIG)
-            if setting and setting.value:
-                data = json.loads(setting.value)
-                value = _as_int(data.get("max_concurrent_accounts"), value)
-    except Exception as exc:
-        logger.warning("读取运行配置失败，使用默认并发数: {}", exc)
-
-    return max(1, min(16, value))
+    """固定串行；旧数据库配置和环境变量都不能开启并发。"""
+    return 1
 
 
 def _as_float(value: Any, default: float = 0.0) -> float:
@@ -89,12 +77,13 @@ class TaskRunner:
         if self._scheduler is not None:
             return
         self._recover_orphaned_tasks()
-        # ThreadPoolExecutor 大小决定同时跑几个账号
+        # 单工作线程保证跨账号串行。
         max_concurrent = _load_max_concurrent_accounts()
 
         self._scheduler = BackgroundScheduler(
             executors={"default": ThreadPoolExecutor(max_workers=max_concurrent)},
-            job_defaults={"misfire_grace_time": 60, "coalesce": False},
+            # 长任务之后的排队任务不能因等待超过 60 秒被丢弃。
+            job_defaults={"misfire_grace_time": None, "coalesce": False},
         )
         self._scheduler.start()
         logger.info("TaskRunner 启动 (max_concurrent={})", max_concurrent)
@@ -166,6 +155,7 @@ class TaskRunner:
             if account and account.status == "running":
                 account.status = "idle"
             db.commit()
+            progress = self._progress_fields(task)
 
         self._publish(
             task_id,
@@ -173,6 +163,8 @@ class TaskRunner:
                 "type": "task_cancelled",
                 "ts": time.time(),
                 "message": "任务未在调度器中，已标记为取消",
+                "status": TaskStatus.CANCELLED.value,
+                **progress,
             },
         )
         return True, "任务未在调度器中，已标记为取消"
@@ -236,6 +228,11 @@ class TaskRunner:
                 task.status = TaskStatus.RUNNING.value
                 task.started_at = datetime.utcnow()
                 task.error_message = None
+                task.total_chapters = 0
+                task.done_chapters = 0
+                task.succeeded_chapters = 0
+                task.failed_chapters = 0
+                task.skipped_chapters = 0
                 account.status = "running"
                 db.commit()
 
@@ -256,7 +253,7 @@ class TaskRunner:
                         course_ids = None
 
                 speed = _as_float(task.speed, 1.0)
-                jobs = _as_int(task.jobs, 4)
+                jobs = 1
                 notopen_action = task.notopen_action
                 mode = task.mode or TaskMode.NORMAL.value
                 tiku_config = self._load_tiku_config(db)
@@ -267,7 +264,7 @@ class TaskRunner:
             self._log(task_id, "info", f"任务启动 (账号={account.phone}, 模式={mode})")
 
             try:
-                self._execute_study(
+                status, message = self._execute_study(
                     task_id=task_id,
                     account_id=account.id,
                     phone=account.phone,
@@ -295,7 +292,7 @@ class TaskRunner:
                 )
                 return
 
-            self._finalize(task_id, account.id, TaskStatus.COMPLETED, None)
+            self._finalize(task_id, account.id, status, message)
         finally:
             with self._lock:
                 self._cancel_events.pop(task_id, None)
@@ -316,7 +313,7 @@ class TaskRunner:
         tiku_config: Dict[str, Any],
         proxy_config: Dict[str, Any],
         cancel_event: threading.Event,
-    ):
+    ) -> tuple[TaskStatus, Optional[str]]:
         """执行 Web 端学习流程：登录 → 拉课程 → 章节循环。"""
         # 选择章节处理函数
         chapter_handler = (
@@ -366,11 +363,16 @@ class TaskRunner:
             if course_ids:
                 course_set = set(course_ids)
                 courses = [c for c in all_courses if c.get("courseId") in course_set]
+                missing = course_set - {c.get("courseId") for c in courses}
+                if missing:
+                    raise RuntimeError(f"所选课程不存在或不可访问: {', '.join(sorted(missing))}")
             else:
                 courses = all_courses
 
             self._log(task_id, "info", f"待处理课程: {len(courses)}")
             self._publish(task_id, {"type": "courses_loaded", "count": len(courses)})
+            if not courses:
+                raise RuntimeError("所选课程不存在或不可访问" if course_ids else "账号没有可处理的课程")
 
             # 统计章节总数
             total_chapters = 0
@@ -388,9 +390,19 @@ class TaskRunner:
             self._publish(
                 task_id, {"type": "total_calculated", "total_chapters": total_chapters}
             )
+            if total_chapters == 0:
+                raise RuntimeError("所选课程没有可处理的章节")
 
             # 章节循环
             done = 0
+            succeeded = 0
+            failed = 0
+            skipped = 0
+            progress = {
+                "done": 0, "total": total_chapters,
+                "done_chapters": 0, "total_chapters": total_chapters,
+                "succeeded_chapters": 0, "failed_chapters": 0, "skipped_chapters": 0,
+            }
             for course, points in course_points:
                 if cancel_event.is_set():
                     raise CancelledError("任务已取消")
@@ -416,8 +428,7 @@ class TaskRunner:
                             "type": "chapter_started",
                             "course_title": course_title,
                             "chapter_title": chapter_title,
-                            "done": done,
-                            "total": total_chapters,
+                            **progress,
                         },
                     )
 
@@ -431,20 +442,26 @@ class TaskRunner:
                         result = ChapterResult.ERROR
 
                     done += 1
-                    self._update_done(task_id, done)
 
-                    status_str = "ok"
-                    if result == ChapterResult.NOT_OPEN:
+                    if result == ChapterResult.SUCCESS:
+                        status_str = "ok"
+                        succeeded += 1
+                        self._log(task_id, "info", f"章节处理成功: {chapter_title}")
+                    elif result == ChapterResult.NOT_OPEN:
                         status_str = "not_open"
+                        skipped += 1
                         if notopen_action == "continue":
                             self._log(task_id, "warning", f"章节未开放: {chapter_title}, 跳过")
                         else:
                             self._log(task_id, "warning", f"章节未开放: {chapter_title}")
-                    elif result == ChapterResult.ERROR:
-                        status_str = "error"
-                        self._log(task_id, "error", f"章节失败: {chapter_title}")
                     else:
-                        self._log(task_id, "info", f"章节完成: {chapter_title}")
+                        status_str = "error"
+                        failed += 1
+                        if result != ChapterResult.ERROR:
+                            self._log(task_id, "error", f"章节处理未确认成功: {chapter_title}, 返回值={result!r}")
+                        self._log(task_id, "error", f"章节失败: {chapter_title}")
+
+                    progress = self._update_results(task_id, done, succeeded, failed, skipped)
 
                     self._publish(
                         task_id,
@@ -453,8 +470,7 @@ class TaskRunner:
                             "course_title": course_title,
                             "chapter_title": chapter_title,
                             "result": status_str,
-                            "done": done,
-                            "total": total_chapters,
+                            **progress,
                         },
                     )
 
@@ -462,6 +478,12 @@ class TaskRunner:
                     task_id,
                     {"type": "course_finished", "course_title": course_title},
                 )
+
+            if cancel_event.is_set():
+                raise CancelledError("任务已取消")
+            if failed or skipped:
+                return TaskStatus.PARTIAL, f"章节处理结束：成功 {succeeded}，失败 {failed}，跳过 {skipped}"
+            return TaskStatus.COMPLETED, None
 
     # ---------- 内部辅助 ----------
     def _publish(self, task_id: int, event: dict):
@@ -485,12 +507,30 @@ class TaskRunner:
                 task.total_chapters = total
                 db.commit()
 
-    def _update_done(self, task_id: int, done: int):
+    @staticmethod
+    def _progress_fields(task: StudyTask) -> dict:
+        """done 表示已处理数量；成功仅表示章节处理器返回 SUCCESS。"""
+        return {
+            "done": task.done_chapters,
+            "total": task.total_chapters,
+            "done_chapters": task.done_chapters,
+            "total_chapters": task.total_chapters,
+            "succeeded_chapters": task.succeeded_chapters,
+            "failed_chapters": task.failed_chapters,
+            "skipped_chapters": task.skipped_chapters,
+        }
+
+    def _update_results(self, task_id: int, done: int, succeeded: int, failed: int, skipped: int) -> dict:
         with SyncSessionLocal() as db:
             task = db.get(StudyTask, task_id)
-            if task:
-                task.done_chapters = done
-                db.commit()
+            if task is None:
+                raise RuntimeError("任务不存在，无法保存章节结果")
+            task.done_chapters = done
+            task.succeeded_chapters = succeeded
+            task.failed_chapters = failed
+            task.skipped_chapters = skipped
+            db.commit()
+            return self._progress_fields(task)
 
     def _update_current(self, task_id: int, *, course: Optional[str], chapter: Optional[str]):
         with SyncSessionLocal() as db:
@@ -506,6 +546,8 @@ class TaskRunner:
         task.finished_at = datetime.utcnow()
         task.error_message = message
         db.commit()
+        self._publish(task.id, {"type": "task_failed", "status": TaskStatus.FAILED.value,
+                               "ts": time.time(), "message": message, **self._progress_fields(task)})
 
     def _finalize(
         self,
@@ -514,6 +556,7 @@ class TaskRunner:
         status: TaskStatus,
         message: Optional[str],
     ):
+        progress = {}
         with SyncSessionLocal() as db:
             task = db.get(StudyTask, task_id)
             if task:
@@ -522,6 +565,7 @@ class TaskRunner:
                 if message:
                     task.error_message = message
                 db.commit()
+                progress = self._progress_fields(task)
 
             account = db.get(ChaoxingAccount, account_id)
             if account:
@@ -538,11 +582,13 @@ class TaskRunner:
 
         event_type = {
             TaskStatus.COMPLETED: "task_done",
+            TaskStatus.PARTIAL: "task_partial",
             TaskStatus.FAILED: "task_failed",
             TaskStatus.CANCELLED: "task_cancelled",
         }.get(status, "task_done")
 
-        self._publish(task_id, {"type": event_type, "ts": time.time(), "message": message or ""})
+        self._publish(task_id, {"type": event_type, "status": status.value, "ts": time.time(),
+                                "message": message or "", **progress})
 
     def _load_tiku_config(self, db) -> Dict[str, Any]:
         """从 app_settings 加载题库配置"""

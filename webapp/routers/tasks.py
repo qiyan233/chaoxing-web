@@ -3,11 +3,11 @@
 import json
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import desc, select
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from webapp.deps import get_db_session, require_login
+from webapp.deps import get_db_session, is_admin_session, require_login
 from webapp.models.account import ChaoxingAccount
 from webapp.models.task import StudyTask, TaskLog, TaskStatus
 from webapp.schemas.task import TaskCreate, TaskLogResponse, TaskResponse
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/tasks", tags=["tasks"], dependencies=[Depends(re
 
 
 def _is_admin(request: Request) -> bool:
-    return request.session.get("role") == "admin" or request.session.get("user") == "admin"
+    return is_admin_session(request)
 
 
 def _current_user_id(request: Request) -> int | None:
@@ -91,6 +91,37 @@ async def list_tasks(
         stmt = stmt.where(StudyTask.account_id.in_(account_stmt))
     result = await db.execute(stmt)
     return list(result.scalars().all())
+
+
+@router.get("/logs")
+async def browse_logs(
+    request: Request,
+    q: str = Query("", max_length=200),
+    level: str = Query("", pattern="^(|info|success|warning|error|debug)$"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db_session),
+):
+    filters = []
+    if not _is_admin(request):
+        filters.append(ChaoxingAccount.user_id == _current_user_id(request))
+    if level:
+        filters.append(TaskLog.level == level)
+    if q.strip():
+        # Treat %, _ and backslashes as search text, not SQL wildcards.
+        term = q.strip().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+        filters.append(or_(TaskLog.message.ilike(f"%{term}%", escape='\\'),
+                           ChaoxingAccount.nickname.ilike(f"%{term}%", escape='\\'),
+                           ChaoxingAccount.phone.ilike(f"%{term}%", escape='\\')))
+    base = select(TaskLog, ChaoxingAccount).join(StudyTask, TaskLog.task_id == StudyTask.id).join(
+        ChaoxingAccount, StudyTask.account_id == ChaoxingAccount.id).where(*filters)
+    total = await db.scalar(select(func.count()).select_from(base.subquery()))
+    rows = (await db.execute(base.order_by(TaskLog.id.desc()).offset(offset).limit(limit))).all()
+    return {"total": total, "items": [
+        {"id": log.id, "task_id": log.task_id, "level": log.level, "message": log.message,
+         "account_name": account.nickname or account.phone,
+         "created_at": log.created_at.isoformat() + "Z"} for log, account in rows
+    ]}
 
 
 @router.get("/{task_id}", response_model=TaskResponse)

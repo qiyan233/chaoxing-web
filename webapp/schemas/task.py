@@ -9,7 +9,7 @@ class TaskCreate(BaseModel):
     account_id: int
     course_ids: Optional[List[str]] = Field(None, description="留空表示全部课程")
     speed: float = Field(1.0, ge=1.0, le=2.0)
-    jobs: int = Field(4, ge=1, le=16)
+    jobs: int = Field(1, ge=1, le=1, description="兼容字段，固定为 1；任务点串行执行")
     notopen_action: str = Field("retry", pattern="^(retry|ask|continue)$")
     mode: str = Field(
         "normal",
@@ -29,6 +29,9 @@ class TaskResponse(BaseModel):
     mode: str = "normal"
     total_chapters: int
     done_chapters: int
+    succeeded_chapters: int = 0
+    failed_chapters: int = 0
+    skipped_chapters: int = 0
     current_course: Optional[str] = None
     current_chapter: Optional[str] = None
     started_at: Optional[datetime] = None

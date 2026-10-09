@@ -14,6 +14,7 @@ class TaskStatus(str, enum.Enum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
+    PARTIAL = "partial"  # 流程已结束，但存在失败或跳过的章节
     FAILED = "failed"
     CANCELLED = "cancelled"
 
@@ -39,12 +40,15 @@ class StudyTask(Base):
     )
     course_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array
     speed: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
-    jobs: Mapped[int] = mapped_column(Integer, default=4, nullable=False)
+    jobs: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     notopen_action: Mapped[str] = mapped_column(String(16), default="retry", nullable=False)
     mode: Mapped[str] = mapped_column(String(16), default=TaskMode.NORMAL.value, nullable=False)
     status: Mapped[str] = mapped_column(String(16), default=TaskStatus.PENDING.value, nullable=False)
     total_chapters: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     done_chapters: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    succeeded_chapters: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failed_chapters: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    skipped_chapters: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     current_course: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     current_chapter: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

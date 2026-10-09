@@ -25,7 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--host", default=os.getenv("CHAOXING_HOST", "0.0.0.0"))
     parser.add_argument("--port", type=int, default=int(os.getenv("CHAOXING_PORT", "3000")))
     parser.add_argument("--reload", action="store_true", help="开发模式自动重载")
-    parser.add_argument("--workers", type=int, default=1, help="工作进程数（reload 时强制 1）")
+    parser.add_argument("--workers", type=int, choices=[1], default=1, help="固定单进程，学习任务串行执行")
     parser.add_argument("--debug", action="store_true", help="启用调试日志")
     return parser.parse_args()
 

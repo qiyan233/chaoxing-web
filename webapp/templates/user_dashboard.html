@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}我的面板 · {{ app_name }}{% endblock %}
 {% block content %}
-<div x-data="userDashboard()" x-init="init()">
+<div x-data="userDashboard()">
+    <div class="error-banner danger" x-show="actionError" x-text="actionError" x-cloak role="alert"></div>
     <header class="page-head">
         <div>
             <div class="page-eyebrow">// USER DASHBOARD · 01</div>
@@ -27,9 +28,9 @@
             <p>已经归属到当前平台账号的学习通身份。</p>
         </article>
         <article class="user-insight-card">
-            <div class="stat-key">总任务</div>
+            <div class="stat-key">最近 100 条任务</div>
             <strong class="tabular" x-text="tasks.length"></strong>
-            <p>由你名下学习通账号创建的全部任务。</p>
+            <p>以下任务统计按最近 100 条记录计算。</p>
         </article>
         <article class="user-insight-card live">
             <div class="stat-key">运行中</div>
@@ -39,17 +40,18 @@
         <article class="user-insight-card success">
             <div class="stat-key">已完成</div>
             <strong class="tabular" x-text="completedCount()"></strong>
-            <p>已经完成的刷课任务。</p>
+            <p>全部章节处理器返回成功的任务；历史任务保留原状态。</p>
         </article>
         <article class="user-insight-card warn">
-            <div class="stat-key">章节进度</div>
+            <div class="stat-key">章节处理进度</div>
             <strong class="tabular" x-text="`${doneChapters()}/${totalChapters()}`"></strong>
-            <p x-text="`完成率 ${completionRate()}%`"></p>
+            <p x-text="`处理率 ${completionRate()}%`"></p>
+            <p x-text="window.taskResultSummary(chapterResults())"></p>
         </article>
         <article class="user-insight-card danger">
             <div class="stat-key">异常任务</div>
             <strong class="tabular" x-text="failedCount()"></strong>
-            <p>失败或取消的任务，需要重新检查。</p>
+            <p>失败、未全部完成或取消的任务，需要检查结果。</p>
         </article>
     </section>
 
@@ -71,10 +73,11 @@
                     <div class="row row-recent">
                         <span class="col-id" x-text="`#${String(t.id).padStart(3,'0')}`"></span>
                         <span x-text="phoneOf(t.account_id)"></span>
-                        <span><span class="tag" :class="tagClass(t.status)" x-text="t.status"></span></span>
+                        <span><span class="tag" :class="tagClass(t.status)" x-text="window.taskStatusLabel(t.status)"></span></span>
                         <span class="flex-col" style="gap: 4px;">
                             <span class="progress-ascii" x-text="window.fmtAscii(t.done_chapters, t.total_chapters, 14)"></span>
-                            <span class="muted tabular" style="font-size: 0.7rem;" x-text="`${t.done_chapters}/${t.total_chapters}`"></span>
+                            <span class="muted tabular" style="font-size: 0.7rem;" x-text="`已处理 ${t.done_chapters}/${t.total_chapters}`"></span>
+                            <span class="muted tabular" style="font-size: 0.7rem;" x-text="window.taskResultSummary(t)"></span>
                         </span>
                         <span class="col-actions">
                             <a class="btn btn-ghost btn-sm" :href="`/user/tasks/${t.id}`">打开</a>
@@ -108,25 +111,29 @@
 
 <script>
 function userDashboard() {
-    return {
+    return actionPage({
         accounts: [],
         tasks: [],
         async init() {
             await this.refresh();
-            setInterval(() => this.refresh(), 5000);
+            setInterval(() => this.runAction('refresh'), 5000);
         },
         async refresh() {
-            const [accounts, tasks] = await Promise.all([
-                fetch('/api/accounts').then(r => r.json()).catch(() => []),
-                fetch('/api/tasks?limit=100').then(r => r.json()).catch(() => []),
-            ]);
+            const accounts = await apiFetch('/api/accounts').then(r => r.json());
+            const tasks = await apiFetch('/api/tasks?limit=100').then(r => r.json());
             this.accounts = Array.isArray(accounts) ? accounts : [];
             this.tasks = Array.isArray(tasks) ? tasks : [];
         },
         recentTasks() { return this.tasks.slice(0, 8); },
         runningCount() { return this.tasks.filter(t => ['pending', 'running'].includes(t.status)).length; },
         completedCount() { return this.tasks.filter(t => t.status === 'completed').length; },
-        failedCount() { return this.tasks.filter(t => ['failed', 'cancelled'].includes(t.status)).length; },
+        failedCount() { return this.tasks.filter(t => ['failed', 'partial', 'cancelled'].includes(t.status)).length; },
+        chapterResults() {
+            return this.tasks.reduce((counts, task) => {
+                for (const key of Object.keys(counts)) counts[key] += Number(task[key]) || 0;
+                return counts;
+            }, {done_chapters: 0, succeeded_chapters: 0, failed_chapters: 0, skipped_chapters: 0});
+        },
         doneChapters() { return this.tasks.reduce((n, t) => n + (Number(t.done_chapters) || 0), 0); },
         totalChapters() { return this.tasks.reduce((n, t) => n + (Number(t.total_chapters) || 0), 0); },
         completionRate() {
@@ -142,6 +149,7 @@ function userDashboard() {
                 pending: 'tag-pending',
                 running: 'tag-running',
                 completed: 'tag-success',
+                partial: 'tag-warn',
                 failed: 'tag-fail',
                 cancelled: 'tag-cancel',
             })[s] || 'tag-pending';
@@ -149,7 +157,7 @@ function userDashboard() {
         acctTag(s) {
             return ({idle: 'tag-pending', running: 'tag-running', error: 'tag-fail'})[s] || 'tag-pending';
         },
-    };
+    });
 }
 </script>
 {% endblock %}

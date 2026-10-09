@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}代理池 · {{ app_name }}{% endblock %}
 {% block content %}
-<div x-data="proxiesPage()" x-init="init()">
+<div x-data="proxiesPage()">
+    <div class="error-banner danger" x-show="actionError" x-text="actionError" x-cloak role="alert"></div>
 
     <header class="page-head">
         <div>
@@ -10,7 +11,7 @@
             <p class="page-sub">只有测试通过的代理会进入 active 池；失败代理会被过滤，不影响任务选择。</p>
         </div>
         <div class="page-actions">
-            <a class="btn btn-ghost" href="/settings">
+            <a class="btn btn-ghost" href="/settings#proxy">
                 <span class="glyph">⚙</span>
                 <span>任务代理策略</span>
             </a>
@@ -167,7 +168,7 @@
 
 <script>
 function proxiesPage() {
-    return {
+    return actionPage({
         proxies: [],
         lastFailed: [],
         selectedIds: [],
@@ -189,7 +190,7 @@ function proxiesPage() {
             await this.refresh();
         },
         async refresh() {
-            this.proxies = await fetch('/api/proxies').then(r => r.json());
+            this.proxies = await apiFetch('/api/proxies').then(r => r.json());
             this.selectedIds = this.selectedIds.filter(id => this.proxies.some(p => p.id === id));
         },
         get allSelected() {
@@ -219,7 +220,7 @@ function proxiesPage() {
             this.submitting = true;
             this.lastFailed = [];
             try {
-                const res = await fetch('/api/proxies', {
+                const res = await apiFetch('/api/proxies', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(this.form),
@@ -241,7 +242,7 @@ function proxiesPage() {
             this.scdnImporting = true;
             this.lastFailed = [];
             try {
-                const res = await fetch('/api/proxies/import/scdn', {
+                const res = await apiFetch('/api/proxies/import/scdn', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
@@ -266,7 +267,7 @@ function proxiesPage() {
             }
         },
         async retest(p) {
-            const res = await fetch(`/api/proxies/${p.id}/test`, {
+            const res = await apiFetch(`/api/proxies/${p.id}/test`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
@@ -285,7 +286,7 @@ function proxiesPage() {
             this.bulkBusy = true;
             this.lastFailed = [];
             try {
-                const res = await fetch('/api/proxies/bulk/test', {
+                const res = await apiFetch('/api/proxies/bulk/test', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
@@ -320,7 +321,7 @@ function proxiesPage() {
         async bulkDelete(payload) {
             this.bulkBusy = true;
             try {
-                const res = await fetch('/api/proxies/bulk/delete', {
+                const res = await apiFetch('/api/proxies/bulk/delete', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(payload),
@@ -338,16 +339,18 @@ function proxiesPage() {
             }
         },
         async enable(p) {
-            await fetch(`/api/proxies/${p.id}/enable`, {method: 'POST'});
+            await apiFetch(`/api/proxies/${p.id}/enable`, {method: 'POST'});
+            showToast('代理已启用', 'success');
             await this.refresh();
         },
         async disable(p) {
-            await fetch(`/api/proxies/${p.id}/disable`, {method: 'POST'});
+            await apiFetch(`/api/proxies/${p.id}/disable`, {method: 'POST'});
+            showToast('代理已禁用', 'success');
             await this.refresh();
         },
         async remove(p) {
             if (!confirm(`删除代理 ${p.proxy_url} ?`)) return;
-            const res = await fetch(`/api/proxies/${p.id}`, {method: 'DELETE'});
+            const res = await apiFetch(`/api/proxies/${p.id}`, {method: 'DELETE'});
             if (res.ok) {
                 showToast('已删除', 'success');
                 await this.refresh();
@@ -355,7 +358,7 @@ function proxiesPage() {
                 showToast('删除失败', 'danger');
             }
         },
-    };
+    });
 }
 </script>
 {% endblock %}

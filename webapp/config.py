@@ -70,7 +70,7 @@ APP_PORT = int(os.getenv("CHAOXING_PORT", "3000"))
 DEBUG = os.getenv("CHAOXING_DEBUG", "false").lower() in {"1", "true", "yes"}
 
 # 任务运行时参数
-MAX_CONCURRENT_ACCOUNTS = int(os.getenv("CHAOXING_MAX_ACCOUNTS", "1"))  # 同时跑几个账号
+MAX_CONCURRENT_ACCOUNTS = 1  # 学习任务固定串行，忽略历史并发环境变量
 COURSE_CACHE_SECONDS = int(os.getenv("CHAOXING_COURSE_CACHE", "300"))   # 课程列表缓存时长
 
 # 模板与静态资源

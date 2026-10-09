@@ -1,13 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Operations · {{ app_name }}{% endblock %}
+{% block title %}课程任务 · {{ app_name }}{% endblock %}
 {% block content %}
-<div x-data="tasksPage()" x-init="init()">
+<div x-data="tasksPage()">
+    <div class="error-banner danger" x-show="actionError" x-text="actionError" x-cloak role="alert"></div>
 
     <header class="page-head">
         <div>
             <div class="page-eyebrow">// 操作 · 03</div>
-            <h1 class="page-title">操作 <span class="serif" style="color: var(--bone-mute);">— 飞行中与已归档。</span></h1>
-            <p class="page-sub">每个派遣的学习任务都在这里。打开任意条目查看直播流。</p>
+            <h1 class="page-title">课程任务</h1>
+            <p class="page-sub">查看处理进度与分类结果，打开任务详情查看实时日志。</p>
         </div>
         <div class="page-actions">
             <button class="btn btn-ghost" @click="refresh()">
@@ -17,23 +18,24 @@
         </div>
     </header>
 
+    <div style="margin-bottom:14px;display:flex;align-items:center;gap:12px"><input type="search" class="input" x-model="search" aria-label="筛选任务" placeholder="搜索最近 100 个任务的账号、课程或编号" style="max-width:360px"><span class="muted" style="font-size:12px" x-text="`${filteredTasks().length} 个任务`"></span></div>
     <section class="panel bracketed">
         <div class="row-list">
             <div class="row row-head row-tasks">
                 <span>编号</span>
                 <span>账号</span>
                 <span>状态</span>
-                <span>进度</span>
+                <span>处理进度 / 结果</span>
                 <span>焦点</span>
                 <span>启动时间</span>
                 <span style="text-align: right;">操作</span>
             </div>
-            <template x-for="t in tasks" :key="t.id">
+            <template x-for="t in filteredTasks()" :key="t.id">
                 <div class="row row-tasks">
                     <span class="col-id" x-text="`#${String(t.id).padStart(3,'0')}`"></span>
                     <span class="col-name" x-text="phoneOf(t.account_id)"></span>
                     <span class="flex-col" style="gap: 4px;">
-                        <span class="tag" :class="tagClass(t.status)" x-text="t.status"></span>
+                        <span class="tag" :class="tagClass(t.status)" x-text="window.taskStatusLabel(t.status)"></span>
                         <span class="tag" :class="t.mode === 'quick' ? 'tag-quick' : 'tag-normal'"
                               style="font-size: 0.6rem; letter-spacing: 0.18em;"
                               x-text="t.mode === 'quick' ? 'quick' : 'normal'"></span>
@@ -43,6 +45,7 @@
                               :style="t.status === 'failed' ? 'color: var(--crimson);' : t.status === 'cancelled' ? 'color: var(--bone-mute);' : ''"></span>
                         <span class="muted tabular" style="font-size: 0.7rem;"
                               x-text="`${t.done_chapters}/${t.total_chapters} · ${window.fmtPct(t.done_chapters,t.total_chapters)}%`"></span>
+                        <span class="muted tabular" style="font-size: 0.7rem;" x-text="window.taskResultSummary(t)"></span>
                     </span>
                     <span class="flex-col" style="gap: 2px; min-width: 0;">
                         <span x-text="t.current_chapter || '—'" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
@@ -64,8 +67,8 @@
                     </span>
                 </div>
             </template>
-            <div class="empty" x-show="tasks.length === 0">
-                尚未派遣任何操作
+            <div class="empty" x-show="filteredTasks().length === 0">
+                <span x-text="search ? '没有匹配的任务，请调整搜索条件' : '暂无任务，选择学习通账号后即可创建'"></span>
             </div>
         </div>
     </section>
@@ -73,44 +76,47 @@
 
 <script>
 function tasksPage() {
-    return {
+    return actionPage({
         tasks: [],
         accounts: [],
+        search: '',
         async init() {
+            this.search = new URLSearchParams(window.location.search).get('q') || '';
             await this.refresh();
-            setInterval(() => this.refresh(), 3000);
+            setInterval(() => this.runAction('refresh'), 3000);
         },
         async refresh() {
-            try {
-                const [tRes, aRes] = await Promise.all([
-                    fetch('/api/tasks?limit=100').then(r => r.json()),
-                    fetch('/api/accounts').then(r => r.json()),
-                ]);
-                this.tasks = tRes;
-                this.accounts = aRes;
-            } catch (e) {}
+            const tRes = await apiFetch('/api/tasks?limit=100').then(r => r.json());
+            const aRes = await apiFetch('/api/accounts').then(r => r.json());
+            this.tasks = tRes;
+            this.accounts = aRes;
         },
         phoneOf(id) {
             const a = this.accounts.find(x => x.id === id);
             return a ? (a.nickname || a.phone) : `#${id}`;
+        },
+        filteredTasks() {
+            const query = this.search.trim().toLowerCase();
+            return this.tasks.filter(t => !query || [t.id, this.phoneOf(t.account_id), t.current_course, t.current_chapter, window.taskStatusLabel(t.status)].join(' ').toLowerCase().includes(query));
         },
         tagClass(s) {
             return ({
                 pending:   'tag-pending',
                 running:   'tag-running',
                 completed: 'tag-success',
+                partial:   'tag-warn',
                 failed:    'tag-fail',
                 cancelled: 'tag-cancel',
             })[s] || 'tag-pending';
         },
         async cancel(t) {
             if (!confirm(`确定取消任务 #${t.id}?`)) return;
-            const res = await fetch(`/api/tasks/${t.id}/cancel`, {method: 'POST'});
+            const res = await apiFetch(`/api/tasks/${t.id}/cancel`, {method: 'POST'});
             const j = await res.json();
             showToast(j.msg || '已取消', j.status ? 'success' : 'warning');
             await this.refresh();
         },
-    };
+    });
 }
 </script>
 {% endblock %}
